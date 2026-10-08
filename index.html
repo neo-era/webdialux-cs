@@ -103,6 +103,7 @@ a{color:var(--accent)}
         <div class="menu" id="menu" hidden role="menu">
           <div class="menu-sep">WebDialux-CS v1.0</div>
           <button class="menu-item" id="mHelp" role="menuitem">📖 Hướng dẫn sử dụng</button>
+          <button class="menu-item" id="mTemplate" role="menuitem">⬇ Tải Excel mẫu</button>
         </div>
       </div>
     </div>
@@ -388,6 +389,32 @@ if(!hasFSA) $("note").textContent="Trình duyệt không hỗ trợ ghi trực t
 // ---- Menu trang chính ----
 $("btnMenu").onclick = (e) => { e.stopPropagation(); $("menu").hidden = !$("menu").hidden; };
 $("mHelp").onclick = () => { $("menu").hidden = true; $("guide").hidden = false; };
+
+// ---- Tải Excel mẫu ----
+async function saveXlsxBuffer(out, name){
+  const blob=new Blob([out],{type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"});
+  if("showSaveFilePicker" in window){
+    try{ const h=await window.showSaveFilePicker({suggestedName:name,types:[{description:"Excel",accept:{"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet":[".xlsx"]}}]});
+      const w=await h.createWritable(); await w.write(blob); await w.close(); return true;
+    }catch(e){ if(e.name==="AbortError") return false; }
+  }
+  const a=Object.assign(document.createElement("a"),{href:URL.createObjectURL(blob),download:name});
+  document.body.appendChild(a); a.click(); a.remove(); return true;
+}
+$("mTemplate").onclick = async () => {
+  $("menu").hidden = true;
+  const HEAD=["STT","Tuyến đường","Phường/Xã (mới)","Quận/Huyện (cũ)","Tủ điều khiển","SL đèn Sở duyệt (bộ)","SL đèn trình Sở (bộ)","Thời điểm thực hiện","Gói thầu","Hạng mục công tác","Chiều dài tuyến (m)","Đầu tuyến","Cuối tuyến","Bộ đèn HPS/E-LED hiện hữu","Độ cao bộ đèn (m)","Độ vươn cần đèn (m)","Đường kính đầu cần","Góc nghiêng bộ đèn (độ)","Độ rộng lòng đường (m)","Khoảng cách trụ TB (m)","Khoảng cách trụ đến mép đường (m)","Cách bố trí trụ","Dải phân cách giữa","Số làn xe","Lưu lượng xe","Fitting","Loại đèn","Nhà cung cấp","Công suất LED (W)","Cấp đường","Ltb YC (cd/m²)","Uo YC","Ul YC","TI YC (%)","SR YC","Ltb KQ (cd/m²)","Uo KQ","Ul KQ","TI KQ (%)","SR KQ","En KQ (lx)","Kết quả","Điểm Ltb","Điểm Uo","Điểm Ul","Điểm TI","Điểm SR","Tổng điểm lần 1","Tổng điểm lần 2","Xếp hạng","Loại đèn được chọn","Fitting (chọn)","Công suất (chọn)","Loại đèn (chọn)","Nhà cung cấp (chọn)"];
+  const row=(o)=>HEAD.map(h=>(h in o)?o[h]:null);
+  const r1=row({"STT":1,"Tuyến đường":"Đường mẫu A — xoá dòng này","Độ cao bộ đèn (m)":7.5,"Độ vươn cần đèn (m)":1.5,"Khoảng cách trụ đến mép đường (m)":0.5,"Góc nghiêng bộ đèn (độ)":15,"Độ rộng lòng đường (m)":7,"Khoảng cách trụ TB (m)":35,"Số làn xe":2,"Cách bố trí trụ":"1 bên","Cấp đường":"D1","Loại đèn":"MAGNOLIA","Công suất LED (W)":60});
+  const r2=row({"STT":2,"Tuyến đường":"Đường mẫu B — xoá dòng này","Độ cao bộ đèn (m)":10.5,"Độ vươn cần đèn (m)":1.5,"Khoảng cách trụ đến mép đường (m)":1.5,"Góc nghiêng bộ đèn (độ)":5,"Độ rộng lòng đường (m)":11,"Khoảng cách trụ TB (m)":30,"Số làn xe":3,"Cách bố trí trụ":"đối xứng","Cấp đường":"C1","Loại đèn":"CARINA","Công suất LED (W)":100});
+  try{
+    const ws=XLSX.utils.aoa_to_sheet([HEAD,r1,r2]);
+    ws["!cols"]=HEAD.map(h=>({wch:Math.min(Math.max(h.length+2,8),28)}));
+    const wb2=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb2,ws,"DU LIEU TUYEN");
+    const ok=await saveXlsxBuffer(XLSX.write(wb2,{bookType:"xlsx",type:"array"}),"DATA_MAU_WEBDIALUX.xlsx");
+    if(ok) setStatus("Đã tạo Excel mẫu (DATA_MAU_WEBDIALUX.xlsx) — điền dữ liệu tuyến của anh vào, xoá 2 dòng mẫu rồi nạp lại.");
+  }catch(e){ setStatus("Lỗi tạo Excel mẫu: "+e.message,true); }
+};
 document.addEventListener("click", (e) => { if (!e.target.closest(".menu-wrap")) $("menu").hidden = true; });
 // ---- Trang hướng dẫn ----
 $("guideClose").onclick = () => { $("guide").hidden = true; };
