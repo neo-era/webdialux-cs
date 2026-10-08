@@ -1,6 +1,6 @@
 {
   "name": "webdialux-cs",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "description": "Mô phỏng chiếu sáng đường kiểu DIALux theo QCVN 07-7:2023 — lõi engine CIE 140 (vòng 1)",
   "type": "module",
   "scripts": {
