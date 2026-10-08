@@ -86,14 +86,20 @@ test("rowToGeometry: có Cấp đường hợp lệ -> dùng cột, autoClass=fa
   assert.equal(g.input.roadClass, "A");
 });
 
-test("classifyFromType: quy đổi loại tuyến -> cấp đường", () => {
-  assert.equal(classifyFromType("đường cao tốc đô thị"), "A");
-  assert.equal(classifyFromType("trục chính", { median: true }), "B1");
-  assert.equal(classifyFromType("trục chính", { median: false }), "B2");
-  assert.equal(classifyFromType("khu buôn bán", { median: true }), "C1");
-  assert.equal(classifyFromType("phố thương mại", { median: false }), "C2");
-  assert.equal(classifyFromType("khu dân cư"), "D1");
-  assert.equal(classifyFromType("khu dân cư hè tối"), "D2");
+test("classifyFromType: quy đổi tên loại đường QCVN 07 -> cấp", () => {
+  assert.equal(classifyFromType("Đường cao tốc đô thị"), "A");
+  assert.equal(classifyFromType("Đường trục chính đô thị", { median: true }), "B1");
+  assert.equal(classifyFromType("Đường chính đô thị", { median: false }), "B2");
+  assert.equal(classifyFromType("Đường liên khu vực", { median: true }), "B1");
+  // "chính khu vực" phải ra C, KHÔNG rơi vào D dù có chữ "khu vực"
+  assert.equal(classifyFromType("Đường chính khu vực", { median: true }), "C1");
+  assert.equal(classifyFromType("Đường chính khu vực", { median: false }), "C2");
+  assert.equal(classifyFromType("đường có buôn bán", { median: false }), "C2");
+  assert.equal(classifyFromType("Đường khu vực"), "D1");
+  assert.equal(classifyFromType("Đường phân khu vực"), "D1");
+  assert.equal(classifyFromType("Đường khu vực hè tối"), "D2");
+  // "nhóm nhà ở" phải ra E, không rơi vào D
+  assert.equal(classifyFromType("Đường nhóm nhà ở"), "E");
   assert.equal(classifyFromType("hẻm nội bộ"), "E");
   assert.equal(classifyFromType("xyz không rõ"), null);
   assert.equal(classifyFromType(""), null);

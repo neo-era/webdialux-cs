@@ -152,7 +152,15 @@ a{color:var(--accent)}
     <h3>1. Chuẩn bị dữ liệu</h3>
     <ul>
       <li><b>File Excel</b> (sheet <code>DU LIEU TUYEN</code>): mỗi dòng là một tuyến/phương án. Cột hình học bắt buộc: Độ cao bộ đèn (m), Độ vươn cần đèn (m), Khoảng cách trụ đến mép đường (m), Độ rộng lòng đường (m), Khoảng cách trụ TB (m), Số làn xe, Góc nghiêng bộ đèn (độ), Cách bố trí trụ, Dải phân cách giữa.</li>
-      <li><b>Cấp đường</b> — app xác định theo thứ tự ưu tiên: (1) cột <code>Cấp đường</code> nếu ghi A/B1/B2/C1/C2/D1/D2/E; (2) cột <code>Loại tuyến</code> (vd "trục chính", "khu buôn bán", "khu dân cư", "hẻm") quy đổi sang cấp; (3) nếu bỏ trống cả hai, app tự đoán theo bề rộng/số làn. Giá trị do app tự xác định có dấu <span class="auto">•</span> kèm ghi chú nguồn.</li>
+      <li><b>Cấp đường</b> — app xác định theo thứ tự ưu tiên: (1) cột <code>Cấp đường</code> nếu ghi A/B1/B2/C1/C2/D1/D2/E; (2) cột <code>Loại tuyến</code> ghi theo <b>tên loại đường trong QCVN 07</b> (xem bảng dưới) quy đổi sang cấp; (3) nếu bỏ trống cả hai, app tự đoán theo bề rộng/số làn. Giá trị do app tự xác định có dấu <span class="auto">•</span> kèm ghi chú nguồn.</li>
+      <li><b>Tên "Loại tuyến" theo QCVN 07 → cấp</b> (hậu tố 1/2 tự suy từ cột <code>Dải phân cách giữa</code>; D1/D2 theo hè sáng/tối):
+        <table class="t" style="margin-top:6px"><thead><tr><th>Loại tuyến</th><th>Cấp</th></tr></thead><tbody>
+        <tr><td>Đường cao tốc đô thị</td><td>A</td></tr>
+        <tr><td>Đường trục chính đô thị · Đường chính đô thị · Đường liên khu vực</td><td>B1 / B2</td></tr>
+        <tr><td>Đường chính khu vực · đường có buôn bán, thương mại</td><td>C1 / C2</td></tr>
+        <tr><td>Đường khu vực · Đường phân khu vực (khu dân cư)</td><td>D1 / D2</td></tr>
+        <tr><td>Đường nhóm nhà ở · nội bộ · ngõ, hẻm</td><td>E</td></tr>
+        </tbody></table></li>
       <li><b>Loại đèn</b> — nếu để trống, app <b>tự chọn</b> bộ đèn công suất nhỏ nhất vẫn Đạt từ thư mục IES; nếu ghi model (Loại đèn + Công suất LED) thì app dùng đúng đèn đó.</li>
       <li><b>Thư mục IES</b>: chứa các file <code>.ies</code> (IESNA LM-63). App tự dò theo thư mục con. Tên file nên có model + công suất (vd <code>…MAGNOLIA…60W…</code>) để khớp đúng.</li>
     </ul>
@@ -455,8 +463,8 @@ $("mTemplate").onclick = async () => {
   $("menu").hidden = true;
   const HEAD=["STT","Tuyến đường","Phường/Xã (mới)","Quận/Huyện (cũ)","Tủ điều khiển","SL đèn Sở duyệt (bộ)","SL đèn trình Sở (bộ)","Thời điểm thực hiện","Gói thầu","Hạng mục công tác","Chiều dài tuyến (m)","Đầu tuyến","Cuối tuyến","Bộ đèn HPS/E-LED hiện hữu","Độ cao bộ đèn (m)","Độ vươn cần đèn (m)","Đường kính đầu cần","Góc nghiêng bộ đèn (độ)","Độ rộng lòng đường (m)","Khoảng cách trụ TB (m)","Khoảng cách trụ đến mép đường (m)","Cách bố trí trụ","Dải phân cách giữa","Số làn xe","Lưu lượng xe","Loại tuyến","Fitting","Loại đèn","Nhà cung cấp","Công suất LED (W)","Cấp đường","Ltb YC (cd/m²)","Uo YC","Ul YC","TI YC (%)","SR YC","Ltb KQ (cd/m²)","Uo KQ","Ul KQ","TI KQ (%)","SR KQ","En KQ (lx)","Kết quả","Điểm Ltb","Điểm Uo","Điểm Ul","Điểm TI","Điểm SR","Tổng điểm lần 1","Tổng điểm lần 2","Xếp hạng","Loại đèn được chọn","Fitting (chọn)","Công suất (chọn)","Loại đèn (chọn)","Nhà cung cấp (chọn)"];
   const row=(o)=>HEAD.map(h=>(h in o)?o[h]:null);
-  // r1: chỉ hình học + Loại tuyến (app tự quy đổi cấp & tự chọn đèn)
-  const r1=row({"STT":1,"Tuyến đường":"Đường mẫu A — xoá dòng này","Độ cao bộ đèn (m)":7.5,"Độ vươn cần đèn (m)":1.5,"Khoảng cách trụ đến mép đường (m)":0.5,"Góc nghiêng bộ đèn (độ)":15,"Độ rộng lòng đường (m)":7,"Khoảng cách trụ TB (m)":35,"Số làn xe":2,"Cách bố trí trụ":"1 bên","Dải phân cách giữa":"không","Loại tuyến":"khu dân cư"});
+  // r1: chỉ hình học + Loại tuyến theo tên QCVN 07 (app tự quy đổi cấp & tự chọn đèn)
+  const r1=row({"STT":1,"Tuyến đường":"Đường mẫu A — xoá dòng này","Độ cao bộ đèn (m)":7.5,"Độ vươn cần đèn (m)":1.5,"Khoảng cách trụ đến mép đường (m)":0.5,"Góc nghiêng bộ đèn (độ)":15,"Độ rộng lòng đường (m)":7,"Khoảng cách trụ TB (m)":35,"Số làn xe":2,"Cách bố trí trụ":"1 bên","Dải phân cách giữa":"không","Loại tuyến":"Đường khu vực"});
   // r2: ghi thẳng Cấp đường + chỉ định đèn (app dùng đúng giá trị)
   const r2=row({"STT":2,"Tuyến đường":"Đường mẫu B — xoá dòng này","Độ cao bộ đèn (m)":10.5,"Độ vươn cần đèn (m)":1.5,"Khoảng cách trụ đến mép đường (m)":1.5,"Góc nghiêng bộ đèn (độ)":5,"Độ rộng lòng đường (m)":11,"Khoảng cách trụ TB (m)":30,"Số làn xe":3,"Cách bố trí trụ":"đối xứng","Dải phân cách giữa":"có","Cấp đường":"C1","Loại đèn":"CARINA","Công suất LED (W)":100});
   try{

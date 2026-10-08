@@ -36,21 +36,21 @@ export function classifyFromType(typeText, { median } = {}) {
   const s = String(typeText || "").toLowerCase().normalize("NFC").trim();
   if (!s) return null;
   const has = (...kw) => kw.some((k) => s.includes(k));
-  // A — cao tốc đô thị
+  // A — đường cao tốc đô thị
   if (has("cao tốc", "cao toc")) return "A";
-  // B — trục chính / liên khu vực / đường chính đô thị
-  if (has("trục chính", "truc chinh", "liên khu vực", "lien khu vuc", "đường chính", "duong chinh", "trục", "truc", "quốc lộ", "quoc lo", "đại lộ", "dai lo"))
-    return median ? "B1" : "B2";
-  // C — khu vực có buôn bán / thương mại
-  if (has("buôn bán", "buon ban", "thương mại", "thuong mai", "chợ", "cho ", "mua sắm", "mua sam", "phố thương", "thị tứ", "thi tu"))
-    return median ? "C1" : "C2";
-  // D — cấp khu vực / khu dân cư (D1 hè sáng mặc định; D2 nếu ghi "hè tối")
-  if (has("hè tối", "he toi", "ít người", "it nguoi", "vắng", "vang")) return "D2";
-  if (has("khu dân cư", "khu dan cu", "dân cư", "dan cu", "khu ở", "khu o", "khu vực", "khu vuc", "phân khu", "phan khu", "khu đô thị", "khu do thi", "gom"))
-    return "D1";
-  // E — nội bộ / hẻm / ngõ / đường nhánh nhỏ
-  if (has("nội bộ", "noi bo", "hẻm", "hem", "ngõ", "ngo", "nhánh", "nhanh", "nội khu", "noi khu", "đường nhỏ", "duong nho"))
+  // E — nhóm nhà ở / nội bộ / ngõ, hẻm  (xét sớm: "nhóm nhà ở" không được rơi vào D)
+  if (has("nhóm nhà ở", "nhom nha o", "nội bộ", "noi bo", "hẻm", "hem", "ngõ", "ngo", "nội khu", "noi khu", "đường nhỏ", "duong nho", "nhánh nhỏ", "nhanh nho"))
     return "E";
+  // B — trục chính đô thị / chính đô thị / liên khu vực
+  if (has("trục chính", "truc chinh", "chính đô thị", "chinh do thi", "liên khu vực", "lien khu vuc", "trục", "truc", "quốc lộ", "quoc lo", "đại lộ", "dai lo"))
+    return median ? "B1" : "B2";
+  // C — đường chính khu vực / khu vực có buôn bán, thương mại  (xét "chính khu vực" TRƯỚC "khu vực")
+  if (has("chính khu vực", "chinh khu vuc", "buôn bán", "buon ban", "thương mại", "thuong mai", "chợ", "cho ", "mua sắm", "mua sam", "phố thương", "pho thuong", "thị tứ", "thi tu"))
+    return median ? "C1" : "C2";
+  // D — đường (cấp/phân) khu vực, khu dân cư (D1 hè sáng mặc định; D2 nếu ghi "hè tối")
+  if (has("hè tối", "he toi", "ít người", "it nguoi", "vắng", "vang")) return "D2";
+  if (has("phân khu vực", "phan khu vuc", "khu vực", "khu vuc", "khu dân cư", "khu dan cu", "dân cư", "dan cu", "khu ở", "khu o", "khu đô thị", "khu do thi"))
+    return "D1";
   return null;
 }
 
