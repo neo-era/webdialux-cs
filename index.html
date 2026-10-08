@@ -36,6 +36,12 @@ button:hover{border-color:var(--accent)}
 button.primary{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
 button:disabled{opacity:.5;cursor:not-allowed}
 label.opt{display:inline-flex;gap:6px;align-items:center;font-size:13px;color:var(--muted)}
+.menu-wrap{position:relative;display:inline-block}
+.menu{position:absolute;right:0;top:calc(100% + 6px);min-width:210px;background:var(--surface);border:1px solid var(--line);border-radius:9px;box-shadow:0 10px 30px rgba(0,0,0,.22);z-index:40;overflow:hidden;display:flex;flex-direction:column}
+.menu-item{padding:10px 14px;text-align:left;border:none;background:none;color:var(--fg);font:inherit;font-size:13.5px;cursor:pointer;text-decoration:none;display:block;border-bottom:1px solid var(--line)}
+.menu-item:last-child{border-bottom:none}
+.menu-item:hover{background:var(--surface-2)}
+.menu-sep{padding:7px 14px;font-size:11px;color:var(--muted);background:var(--surface-2);text-transform:uppercase;letter-spacing:.4px}
 input[type=number]{width:62px;font-family:var(--mono);background:var(--surface);color:var(--fg);
   border:1px solid var(--line);border-radius:6px;padding:6px 7px}
 select{font-family:var(--sans);font-size:13px;background:var(--surface);color:var(--fg);border:1px solid var(--line);border-radius:6px;padding:7px 9px}
@@ -92,7 +98,14 @@ a{color:var(--accent)}
       <button id="btnRun" class="primary" disabled>▶ Chạy</button>
       <button id="btnSave" disabled>💾 Ghi/Tải Excel</button>
       <button id="btnPdf" disabled>📑 Xuất PDF</button>
-      <button id="btnHelp">📖 Hướng dẫn</button>
+      <div class="menu-wrap">
+        <button id="btnMenu" aria-haspopup="true">☰ Menu</button>
+        <div class="menu" id="menu" hidden role="menu">
+          <div class="menu-sep">WebDialux-CS v1.0</div>
+          <button class="menu-item" id="mHelp" role="menuitem">📖 Hướng dẫn sử dụng</button>
+          <a class="menu-item" href="https://github.com/neo-era/webdialux-cs" target="_blank" rel="noopener" role="menuitem">⭳ Mã nguồn (GitHub)</a>
+        </div>
+      </div>
     </div>
   </header>
 
@@ -373,9 +386,12 @@ $("btnPdf").onclick = async () => {
 
 if(!hasFSA) $("note").textContent="Trình duyệt không hỗ trợ ghi trực tiếp (File System Access). Dùng Chrome/Edge trên GitHub Pages để ghi đè file gốc; nếu không, kết quả sẽ tải về dạng file mới.";
 
+// ---- Menu trang chính ----
+$("btnMenu").onclick = (e) => { e.stopPropagation(); $("menu").hidden = !$("menu").hidden; };
+$("mHelp").onclick = () => { $("menu").hidden = true; $("guide").hidden = false; };
+document.addEventListener("click", (e) => { if (!e.target.closest(".menu-wrap")) $("menu").hidden = true; });
 // ---- Trang hướng dẫn ----
-$("btnHelp").onclick = () => { $("guide").hidden = false; };
 $("guideClose").onclick = () => { $("guide").hidden = true; };
 $("guide").addEventListener("click", (e) => { if (e.target.id === "guide") $("guide").hidden = true; });
-document.addEventListener("keydown", (e) => { if (e.key === "Escape") $("guide").hidden = true; });
+document.addEventListener("keydown", (e) => { if (e.key === "Escape") { $("guide").hidden = true; $("menu").hidden = true; } });
 </script>
