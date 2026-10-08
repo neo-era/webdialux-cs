@@ -213,7 +213,7 @@ export function renderRoadPage(doc, { input, result, ph, meta, makeIntensity }) 
   y = drawTable(doc, M, y, [50, 30, 30, 30, 30], orows, { header: true, rh: 6.5, fs: 8.5 });
 
   doc.setFontSize(7.5); doc.setTextColor(120, 130, 145);
-  doc.text("WebDialux-CS · engine CIE 140 · bảng R3 CIE của DIALux · TI theo Stiles-Holladay (xấp xỉ)", M, 290);
+  doc.text("WebDialux-CS · engine CIE 140 · bảng R3 CIE · TI theo Stiles-Holladay (xấp xỉ)", M, 290);
   return doc;
 }
 
