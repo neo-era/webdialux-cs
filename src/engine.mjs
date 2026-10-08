@@ -81,12 +81,15 @@ export function calcRoad(input) {
   road.SR = SR;
 
   const req = QCVN[roadClass] || QCVN.D1;
+  // So sánh theo đúng độ chính xác hiển thị (2 chữ số; TI làm tròn số nguyên) để
+  // verdict khớp con số in ra — tránh kiểu 0,499 hiển thị 0,50 mà lại ✗.
+  const r2 = (x) => Math.round(x * 100) / 100;
   const checks = {
-    Ltb: road.Lav >= req.Ltb,
-    Uo: road.Uo >= req.Uo,
-    Ul: road.Ul >= req.Ul,
-    TI: road.TI <= req.TI,
-    SR: road.SR >= req.SR,
+    Ltb: r2(road.Lav) >= req.Ltb,
+    Uo: r2(road.Uo) >= req.Uo,
+    Ul: r2(road.Ul) >= req.Ul,
+    TI: Math.round(road.TI) <= req.TI,
+    SR: r2(road.SR) >= req.SR,
   };
   const pass = Object.values(checks).every(Boolean);
 

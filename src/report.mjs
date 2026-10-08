@@ -189,20 +189,24 @@ export function renderRoadPage(doc, { input, result, ph, meta, makeIntensity }) 
   // Độ rọi
   doc.setFontSize(10.5); doc.text("Độ rọi ngang (maintenance) — lưới & phân bố", M, y); y += 3;
   try {
-    const fc = falseColorDataURL(result, globalThis.document);
     const g = grid2D(result);
-    const imgW = 120, imgH = imgW * g.ys.length / g.xs.length;
-    doc.addImage(fc, "PNG", M, y, imgW, imgH);
-    doc.setFontSize(8); doc.text(`${vn(result.grid.S,0)} m × ${vn(result.grid.W,1)} m`, M, y + imgH + 4);
+    const aspect = g.ys.length / g.xs.length;
+    let iw = 118, ih = iw * aspect;
+    const maxH = 50; if (ih > maxH) { ih = maxH; iw = ih / aspect; } // giới hạn chiều cao ảnh
+    if (y + ih + 14 > 288) { doc.addPage(); y = 16; } // tránh tràn trang
+    const fc = falseColorDataURL(result, globalThis.document);
+    doc.addImage(fc, "PNG", M, y, iw, ih);
+    doc.setFontSize(8); doc.text(`${vn(result.grid.S,0)} m × ${vn(result.grid.W,1)} m (dọc × ngang)`, M, y + ih + 4);
     const e = d.illum;
-    drawTable(doc, M + imgW + 6, y, [22, 20], [
+    drawTable(doc, M + iw + 6, y, [22, 20], [
       ["Eav", vn(e.Eav, 1)], ["Emin", vn(e.Emin, 2)], ["Emax", vn(e.Emax, 1)],
       ["Uo (g1)", vn(e.g1, 2)], ["g2", vn(e.g2, 2)],
     ], { rh: 6.5, fs: 8.5 });
-    y += imgH + 8;
+    y += ih + 9;
   } catch (_) { y += 4; }
 
   // Observer
+  if (y + 10 + d.observers.length * 6.5 > 286) { doc.addPage(); y = 16; } // tránh tràn trang
   doc.setFontSize(10.5); doc.text("Kết quả theo người quan sát", M, y); y += 2;
   const orows = [[{ t: "Observer (y, m)", a: "left" }, "Lav", "Uo", "Ul", "TI %"]];
   d.observers.forEach((o, i) => orows.push([`#${i + 1}  (y=${vn(o.y, 2)})`, vn(o.Lav), vn(o.Uo), vn(o.Ul), vn(o.TI, 0)]));
