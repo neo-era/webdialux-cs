@@ -1,0 +1,309 @@
+<meta charset="utf-8">
+<title>WebDialux-CS</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<style>
+/* Layout: thanh công cụ trên cùng cố định, dải KPI, bảng kết quả cuộn dọc. Công cụ kỹ thuật, quét & thao tác. */
+:root{
+  --bg:#f3f5f8; --surface:#ffffff; --surface-2:#eef1f6; --line:#d8dee8;
+  --fg:#1c2430; --muted:#5b6676; --accent:#2563a8; --accent-ink:#ffffff;
+  --ok:#1f8a4c; --ok-bg:#e3f4ea; --fail:#c0392b; --fail-bg:#fbe7e4; --warn:#b7791f; --warn-bg:#fbf0dc;
+  --mono:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+  --sans:"IBM Plex Sans",system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#0f141b; --surface:#19212c; --surface-2:#1f2935; --line:#2c3845;
+  --fg:#e6ecf3; --muted:#9aa7b6; --accent:#5a9be0; --accent-ink:#0f141b;
+  --ok:#49c07d; --ok-bg:#15301f; --fail:#f07367; --fail-bg:#3a1b17; --warn:#e3b457; --warn-bg:#352a12; color-scheme:dark;
+}}
+:root[data-theme="dark"]{
+  --bg:#0f141b; --surface:#19212c; --surface-2:#1f2935; --line:#2c3845;
+  --fg:#e6ecf3; --muted:#9aa7b6; --accent:#5a9be0; --accent-ink:#0f141b;
+  --ok:#49c07d; --ok-bg:#15301f; --fail:#f07367; --fail-bg:#3a1b17; --warn:#e3b457; --warn-bg:#352a12; color-scheme:dark;
+}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--fg);font-family:var(--sans);margin:0;line-height:1.45}
+.wrap{max-width:1200px;margin:0 auto;padding-inline:16px;padding-block:18px}
+header.bar{display:flex;flex-wrap:wrap;gap:12px 18px;align-items:center;justify-content:space-between;
+  border-bottom:1px solid var(--line);padding-bottom:14px}
+.brand{display:flex;flex-direction:column;gap:2px;min-width:0}
+.brand b{font-size:19px;letter-spacing:.2px}
+.brand span{color:var(--muted);font-size:12.5px}
+.controls{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+button,.btn{font-family:var(--sans);font-size:13.5px;border:1px solid var(--line);background:var(--surface);
+  color:var(--fg);padding:8px 13px;border-radius:7px;cursor:pointer;display:inline-flex;gap:7px;align-items:center}
+button:hover{border-color:var(--accent)}
+button.primary{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+button:disabled{opacity:.5;cursor:not-allowed}
+label.opt{display:inline-flex;gap:6px;align-items:center;font-size:13px;color:var(--muted)}
+input[type=number]{width:62px;font-family:var(--mono);background:var(--surface);color:var(--fg);
+  border:1px solid var(--line);border-radius:6px;padding:6px 7px}
+select{font-family:var(--sans);font-size:13px;background:var(--surface);color:var(--fg);border:1px solid var(--line);border-radius:6px;padding:7px 9px}
+.status{font-size:12.5px;color:var(--muted);margin:10px 0}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin:14px 0}
+.kpi{background:var(--surface);border:1px solid var(--line);border-radius:9px;padding:12px 14px}
+.kpi .n{font-family:var(--mono);font-size:24px;font-variant-numeric:tabular-nums;line-height:1}
+.kpi .l{color:var(--muted);font-size:12px;margin-top:5px;text-transform:uppercase;letter-spacing:.4px}
+.kpi.ok .n{color:var(--ok)} .kpi.fail .n{color:var(--fail)} .kpi.warn .n{color:var(--warn)}
+.filters{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:8px 0 10px}
+.tablewrap{overflow-x:auto;border:1px solid var(--line);border-radius:10px;background:var(--surface)}
+table{border-collapse:collapse;width:100%;font-size:13px;min-width:0}
+th,td{padding:8px 10px;text-align:right;white-space:nowrap;border-bottom:1px solid var(--line)}
+th{position:sticky;top:0;background:var(--surface-2);color:var(--muted);font-weight:600;font-size:11.5px;
+  text-transform:uppercase;letter-spacing:.3px;z-index:1}
+td.t,th.t{text-align:left}
+td.num{font-family:var(--mono);font-variant-numeric:tabular-nums}
+tr:last-child td{border-bottom:none}
+.pill{display:inline-block;padding:2px 9px;border-radius:999px;font-size:11.5px;font-weight:600}
+.pill.ok{background:var(--ok-bg);color:var(--ok)} .pill.fail{background:var(--fail-bg);color:var(--fail)}
+.pill.na{background:var(--warn-bg);color:var(--warn)}
+.bad{color:var(--fail)} .empty{padding:40px;text-align:center;color:var(--muted)}
+.note{font-size:12px;color:var(--muted);margin-top:12px}
+a{color:var(--accent)}
+</style>
+
+<div class="wrap">
+  <header class="bar">
+    <div class="brand">
+      <b>WebDialux-CS</b>
+      <span>Mô phỏng chiếu sáng đường theo QCVN 07-7:2023 · bảng R3 CIE của DIALux · dữ liệu tại máy</span>
+    </div>
+    <div class="controls">
+      <button id="btnXlsx">📄 Chọn file Excel</button>
+      <button id="btnIes">📁 Chọn thư mục IES</button>
+      <label class="opt">MF <input type="number" id="mf" value="0.8" step="0.05" min="0.3" max="1"></label>
+      <label class="opt">Chế độ
+        <select id="mode"><option value="each">Từng phương án</option><option value="auto">Tự dò (CS nhỏ nhất Đạt)</option></select>
+      </label>
+      <button id="btnRun" class="primary" disabled>▶ Chạy</button>
+      <button id="btnSave" disabled>💾 Ghi/Tải Excel</button>
+      <button id="btnPdf" disabled>📑 Xuất PDF</button>
+    </div>
+  </header>
+
+  <div class="status" id="status">Chọn file Excel dữ liệu tuyến và thư mục chứa file .ies để bắt đầu. Mọi tính toán chạy tại máy, không gửi lên mạng.</div>
+
+  <div class="kpis" id="kpis" hidden>
+    <div class="kpi"><div class="n" id="kTong">0</div><div class="l">Dòng</div></div>
+    <div class="kpi"><div class="n" id="kTinh">0</div><div class="l">Tính được</div></div>
+    <div class="kpi ok"><div class="n" id="kDat">0</div><div class="l">Đạt</div></div>
+    <div class="kpi fail"><div class="n" id="kFail">0</div><div class="l">Không đạt</div></div>
+    <div class="kpi warn"><div class="n" id="kThieu">0</div><div class="l">Thiếu IES/HH</div></div>
+  </div>
+
+  <div class="filters" id="filters" hidden>
+    <select id="flt"><option value="all">Tất cả</option><option value="dat">Đạt</option><option value="fail">Không đạt</option><option value="thieu">Thiếu IES/hình học</option></select>
+    <input type="search" id="q" placeholder="Tìm tuyến…" style="flex:1;min-width:140px;padding:7px 10px;border:1px solid var(--line);border-radius:6px;background:var(--surface);color:var(--fg)">
+  </div>
+
+  <div class="tablewrap" id="tablewrap" hidden>
+    <table id="tbl">
+      <thead><tr>
+        <th class="t">STT</th><th class="t">Tuyến</th><th>Cấp</th><th class="t">Đèn</th><th>CS</th>
+        <th class="t">IES</th><th>Ltb</th><th>Uo</th><th>Ul</th><th>TI</th><th>SR</th><th>Kết quả</th>
+      </tr></thead>
+      <tbody id="tbody"></tbody>
+    </table>
+  </div>
+
+  <div class="empty" id="empty">Chưa có dữ liệu.</div>
+  <div class="note" id="note"></div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script type="module">
+import { buildIesIndex, runBatch, autoFind } from "./src/batch.mjs";
+import { COLS, rowToGeometry, matchIES } from "./src/mapping.mjs";
+import { calcRoad } from "./src/engine.mjs";
+import { makeIntensity } from "./src/ies.mjs";
+
+const $ = (id) => document.getElementById(id);
+const hasFSA = "showOpenFilePicker" in window;
+let xlsxBuf = null, xlsxHandle = null, wb = null, sheetName = null, rows = null;
+let iesFiles = [], iesIndex = [], results = null, resultMode = null;
+
+function setStatus(t, bad){ const s=$("status"); s.textContent=t; s.classList.toggle("bad",!!bad); }
+function fmt(x,d=2){ return (x==null||!isFinite(x))?"—":Number(x).toFixed(d); }
+
+// ---- Chọn Excel ----
+$("btnXlsx").onclick = async () => {
+  try{
+    if(hasFSA){
+      const [h] = await window.showOpenFilePicker({types:[{description:"Excel",accept:{"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet":[".xlsx"],"application/vnd.ms-excel.sheet.macroEnabled.12":[".xlsm"]}}]});
+      xlsxHandle=h; const f=await h.getFile(); xlsxBuf=await f.arrayBuffer(); loadWb(f.name);
+    } else {
+      const inp=Object.assign(document.createElement("input"),{type:"file",accept:".xlsx,.xlsm"});
+      inp.onchange=async()=>{ const f=inp.files[0]; if(!f)return; xlsxBuf=await f.arrayBuffer(); loadWb(f.name); };
+      inp.click();
+    }
+  }catch(e){ if(e.name!=="AbortError") setStatus("Lỗi mở Excel: "+e.message,true); }
+};
+function loadWb(name){
+  try{
+    wb = XLSX.read(xlsxBuf,{type:"array"});
+    sheetName = wb.SheetNames.includes("DU LIEU TUYEN") ? "DU LIEU TUYEN" : wb.SheetNames[0];
+    rows = XLSX.utils.sheet_to_json(wb.Sheets[sheetName],{defval:null});
+    setStatus(`Excel: ${name} · sheet "${sheetName}" · ${rows.length} dòng. ${iesIndex.length?"Sẵn sàng chạy.":"Giờ chọn thư mục IES."}`);
+    maybeEnableRun();
+  }catch(e){ setStatus("Không đọc được Excel: "+e.message,true); }
+}
+
+// ---- Chọn thư mục IES ----
+$("btnIes").onclick = async () => {
+  try{
+    iesFiles=[];
+    if(hasFSA && "showDirectoryPicker" in window){
+      const dir=await window.showDirectoryPicker();
+      await collect(dir);
+    } else {
+      const inp=Object.assign(document.createElement("input"),{type:"file"});
+      inp.webkitdirectory=true; inp.multiple=true;
+      inp.onchange=async()=>{ for(const f of inp.files){ if(f.name.toLowerCase().endsWith(".ies")) iesFiles.push({name:f.name,text:await f.text()}); } finishIes(); };
+      inp.click(); return;
+    }
+    finishIes();
+  }catch(e){ if(e.name!=="AbortError") setStatus("Lỗi đọc IES: "+e.message,true); }
+};
+async function collect(dir){
+  for await (const [,h] of dir.entries()){
+    if(h.kind==="file" && h.name.toLowerCase().endsWith(".ies")){ const f=await h.getFile(); iesFiles.push({name:h.name,text:await f.text()}); }
+    else if(h.kind==="directory"){ await collect(h); }
+  }
+}
+function finishIes(){
+  iesIndex = buildIesIndex(iesFiles);
+  const models=[...new Set(iesIndex.map(e=>e.model).filter(Boolean))];
+  setStatus(`IES: ${iesFiles.length} file (${iesIndex.length} hợp lệ) · model: ${models.join(", ")||"?"}. ${rows?"Sẵn sàng chạy.":"Giờ chọn file Excel."}`);
+  maybeEnableRun();
+}
+function maybeEnableRun(){ $("btnRun").disabled = !(rows && iesIndex.length); }
+
+// ---- Chạy ----
+$("btnRun").onclick = () => {
+  const MF=parseFloat($("mf").value)||0.8;
+  resultMode=$("mode").value;
+  const t0=performance.now();
+  try{
+    if(resultMode==="auto"){ results=autoFind(rows,iesIndex,{MF}); }
+    else { results=runBatch(rows,iesIndex,{MF}); }
+  }catch(e){ setStatus("Lỗi khi chạy: "+e.message,true); return; }
+  const ms=Math.round(performance.now()-t0);
+  render();
+  setStatus(`Đã tính ${results.length} dòng trong ${ms} ms.`);
+  $("btnSave").disabled=false; $("btnPdf").disabled=false;
+};
+
+function summarize(){
+  let tinh=0,dat=0,fail=0,thieu=0;
+  for(const r of results){ if(r.status==="ok"){tinh++; r.pass?dat++:fail++;} else thieu++; }
+  return {tong:results.length,tinh,dat,fail,thieu};
+}
+function render(){
+  const s=summarize();
+  $("kTong").textContent=s.tong; $("kTinh").textContent=s.tinh; $("kDat").textContent=s.dat;
+  $("kFail").textContent=s.fail; $("kThieu").textContent=s.thieu;
+  $("kpis").hidden=false; $("filters").hidden=false; $("tablewrap").hidden=false; $("empty").hidden=true;
+  drawRows();
+}
+function matchFilter(r){
+  const flt=$("flt").value, q=($("q").value||"").toLowerCase();
+  if(flt==="dat" && !(r.status==="ok"&&r.pass)) return false;
+  if(flt==="fail" && !(r.status==="ok"&&!r.pass)) return false;
+  if(flt==="thieu" && r.status==="ok") return false;
+  if(q && !String(r.tuyen||"").toLowerCase().includes(q)) return false;
+  return true;
+}
+function visibleIndices(){ const out=[]; results.forEach((r,i)=>{ if(matchFilter(r)) out.push(i); }); return out; }
+function drawRows(){
+  const tb=$("tbody"); tb.innerHTML="";
+  for(const i of visibleIndices()){
+    const r=results[i];
+    const tr=document.createElement("tr");
+    let kq;
+    if(r.status!=="ok") kq=`<span class="pill na">${r.status}</span>`;
+    else kq=`<span class="pill ${r.pass?"ok":"fail"}">${r.pass?"ĐẠT":"KHÔNG ĐẠT"}</span>`;
+    const cell=(v,bad)=>`<td class="num${bad?" bad":""}">${v}</td>`;
+    tr.innerHTML=`<td class="t num">${r.stt??""}</td><td class="t">${r.tuyen??""}</td>`+
+      `<td class="num">${r.roadClass||""}</td><td class="t">${r.model||""}</td><td class="num">${r.power??""}</td>`+
+      `<td class="t">${(r.iesName||r.chon||"").replace(/_IESNA2002\.IES$/i,"")}</td>`+
+      (r.status==="ok"?
+        cell(fmt(r.Ltb))+cell(fmt(r.Uo))+cell(fmt(r.Ul))+cell(fmt(r.TI,0))+cell(fmt(r.SR)):
+        `<td colspan="5" class="t" style="color:var(--muted)">${r.reason||""}</td>`)+
+      `<td class="t">${kq}</td>`;
+    tb.appendChild(tr);
+  }
+}
+$("flt").onchange=drawRows; $("q").oninput=drawRows;
+
+// ---- Ghi/Tải kết quả ----
+$("btnSave").onclick = async () => {
+  if(!results){ return; }
+  if(resultMode==="auto"){ setStatus("Chế độ 'Tự dò' không ghi đủ cột kết quả. Hãy chạy lại ở chế độ 'Từng phương án' rồi ghi.",true); return; }
+  try{
+    const ws=wb.Sheets[sheetName];
+    const ref=XLSX.utils.decode_range(ws["!ref"]);
+    // tìm cột theo tiêu đề (hàng đầu)
+    const hdr={};
+    for(let c=ref.s.c;c<=ref.e.c;c++){ const cell=ws[XLSX.utils.encode_cell({r:ref.s.r,c})]; if(cell&&cell.v!=null) hdr[String(cell.v).trim()]=c; }
+    const resultCols=["Ltb KQ (cd/m²)","Uo KQ","Ul KQ","TI KQ (%)","SR KQ","En KQ (lx)","Kết quả"];
+    const matched=resultCols.filter(n=>hdr[n]!=null);
+    if(matched.length===0){ setStatus("Không tìm thấy cột kết quả nào trong sheet (Ltb KQ, Uo KQ…). Kiểm tra tiêu đề cột.",true); return; }
+    // ghi tại ĐÚNG số hàng thật của sheet (sheet_to_json bỏ dòng trống -> dùng __rowNum__)
+    const put=(rowNum,colName,val)=>{ const c=hdr[colName]; if(c==null||val==null)return; ws[XLSX.utils.encode_cell({r:rowNum,c})]={t:typeof val==="number"?"n":"s",v:val}; };
+    results.forEach((r,i)=>{ if(r.status!=="ok")return; const rn=rows[i].__rowNum__; if(rn==null)return;
+      put(rn,"Ltb KQ (cd/m²)",+r.Ltb.toFixed(2)); put(rn,"Uo KQ",+r.Uo.toFixed(2)); put(rn,"Ul KQ",+r.Ul.toFixed(2));
+      put(rn,"TI KQ (%)",+r.TI.toFixed(0)); put(rn,"SR KQ",+r.SR.toFixed(2)); put(rn,"En KQ (lx)",+r.En.toFixed(1));
+      put(rn,"Kết quả",r.pass?"ĐẠT":"KHÔNG ĐẠT");
+    });
+    const out=XLSX.write(wb,{bookType:"xlsx",type:"array"});
+    // chỉ ghi đè tại chỗ khi file gốc là .xlsx; .xlsm hoặc khác -> tải file .xlsx mới (tránh hỏng macro)
+    const canOverwrite = hasFSA && xlsxHandle && /\.xlsx$/i.test(xlsxHandle.name||"");
+    if(canOverwrite){
+      try{ const w=await xlsxHandle.createWritable(); await w.write(out); await w.close(); setStatus(`Đã ghi ${matched.length} cột kết quả vào file Excel gốc.`); return; }
+      catch(_){ /* rơi xuống tải */ }
+    }
+    const blob=new Blob([out],{type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"});
+    const a=Object.assign(document.createElement("a"),{href:URL.createObjectURL(blob),download:"KET_QUA_WEBDIALUX.xlsx"});
+    document.body.appendChild(a); a.click(); a.remove();
+    setStatus("Đã tạo file KET_QUA_WEBDIALUX.xlsx để tải (file .xlsm giữ nguyên để không hỏng macro; triển khai lên GitHub Pages để ghi trực tiếp vào .xlsx).");
+  }catch(e){ setStatus("Lỗi ghi Excel: "+e.message,true); }
+};
+
+// ---- Xuất PDF kiểu DIALux (các tuyến đang lọc, 1 trang/tuyến) ----
+$("btnPdf").onclick = async () => {
+  if(!results) return;
+  const idxs = visibleIndices().filter(i=>results[i].status==="ok");
+  if(idxs.length===0){ setStatus("Không có tuyến tính được (theo bộ lọc) để xuất PDF.",true); return; }
+  setStatus(`Đang tạo PDF ${idxs.length} tuyến…`);
+  try{
+    const [rep, fontMod] = await Promise.all([ import("./src/report.mjs"), import("./src/font.mjs") ]);
+    const { makeDoc, renderRoadPage } = rep; const font = fontMod.default;
+    const jsPDF = window.jspdf && window.jspdf.jsPDF;
+    if(!jsPDF){ setStatus("Chưa tải được thư viện jsPDF (kiểm tra mạng/CDN).",true); return; }
+    const MF=parseFloat($("mf").value)||0.8;
+    let doc=null, made=0;
+    for(const i of idxs){
+      const row=rows[i]; const g=rowToGeometry(row); const m=matchIES(g.meta, iesIndex); if(!m.ies) continue;
+      const input={...g.input, MF, detail:true};
+      let result; try{ result=calcRoad({ies:m.ies.ph, ...input}); }catch(_){ continue; }
+      if(!doc) doc=makeDoc({jsPDF,font}); else doc.addPage();
+      renderRoadPage(doc,{input,result,ph:m.ies.ph,makeIntensity,
+        meta:{tuyen:g.meta.tuyen,model:g.meta.model,fitting:g.meta.fitting,power:g.meta.power,ncc:g.meta.ncc,iesName:m.ies.name}});
+      made++;
+    }
+    if(!doc){ setStatus("Không tạo được trang PDF nào (thiếu IES khớp).",true); return; }
+    const name = made===1 ? `BaoCao_${String(rows[idxs[0]][COLS.tuyen]||"tuyen").replace(/[^\p{L}\p{N}]+/gu,"_")}.pdf` : `BaoCao_WebDialux_${made}tuyen.pdf`;
+    const blob = doc.output("blob");
+    if("showSaveFilePicker" in window){
+      try{ const h=await window.showSaveFilePicker({suggestedName:name,types:[{description:"PDF",accept:{"application/pdf":[".pdf"]}}]});
+        const w=await h.createWritable(); await w.write(blob); await w.close(); setStatus(`Đã lưu PDF ${made} tuyến.`); return;
+      }catch(e){ if(e.name==="AbortError"){ setStatus("Đã huỷ lưu PDF."); return; } }
+    }
+    const a=Object.assign(document.createElement("a"),{href:URL.createObjectURL(blob),download:name});
+    document.body.appendChild(a); a.click(); a.remove();
+    setStatus(`Đã tạo PDF ${made} tuyến để tải về (nếu trình duyệt trong khung chặn tải, chạy app trên GitHub Pages/local server).`);
+  }catch(e){ setStatus("Lỗi xuất PDF: "+e.message,true); }
+};
+
+if(!hasFSA) $("note").textContent="Trình duyệt không hỗ trợ ghi trực tiếp (File System Access). Dùng Chrome/Edge trên GitHub Pages để ghi đè file gốc; nếu không, kết quả sẽ tải về dạng file mới.";
+</script>
