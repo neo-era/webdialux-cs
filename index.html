@@ -64,6 +64,8 @@ tr:last-child td{border-bottom:none}
 .pill{display:inline-block;padding:2px 9px;border-radius:999px;font-size:11.5px;font-weight:600}
 .pill.ok{background:var(--ok-bg);color:var(--ok)} .pill.fail{background:var(--fail-bg);color:var(--fail)}
 .pill.na{background:var(--warn-bg);color:var(--warn)}
+.auto{color:var(--accent);font-weight:700;margin-left:3px;cursor:help}
+.legend{font-size:12px;color:var(--muted);margin:8px 2px 0}
 .bad{color:var(--fail)} .empty{padding:40px;text-align:center;color:var(--muted)}
 .note{font-size:12px;color:var(--muted);margin-top:12px}
 .owner{margin-top:20px;padding-top:12px;border-top:1px solid var(--line);text-align:center;color:var(--muted);font-size:12px}
@@ -134,6 +136,7 @@ a{color:var(--accent)}
       <tbody id="tbody"></tbody>
     </table>
   </div>
+  <div class="legend" id="legend" hidden>Dấu <span class="auto">•</span> = giá trị do app tự xác định (cấp đường từ hình học) hoặc tự chọn (bộ đèn công suất nhỏ nhất vẫn Đạt). Bấm <b>💾 Ghi/Tải Excel</b> để xuất bảng kết quả đầy đủ.</div>
 
   <div class="empty" id="empty">Chưa có dữ liệu.</div>
   <div class="note" id="note"></div>
@@ -283,6 +286,7 @@ function render(){
   $("kTong").textContent=s.tong; $("kTinh").textContent=s.tinh; $("kDat").textContent=s.dat;
   $("kFail").textContent=s.fail; $("kThieu").textContent=s.thieu;
   $("kpis").hidden=false; $("filters").hidden=false; $("tablewrap").hidden=false; $("empty").hidden=true;
+  $("legend").hidden = !results.some(r=>r.autoClass||r.autoSelect);
   drawRows();
 }
 function matchFilter(r){
@@ -303,9 +307,11 @@ function drawRows(){
     if(r.status!=="ok") kq=`<span class="pill na">${r.status}</span>`;
     else kq=`<span class="pill ${r.pass?"ok":"fail"}">${r.pass?"ĐẠT":"KHÔNG ĐẠT"}</span>`;
     const cell=(v,bad)=>`<td class="num${bad?" bad":""}">${v}</td>`;
+    const auto=(txt,on,tip)=>on?`${txt}<span class="auto" title="${tip}">•</span>`:(txt||"");
     tr.innerHTML=`<td class="t num">${r.stt??""}</td><td class="t">${r.tuyen??""}</td>`+
-      `<td class="num">${r.roadClass||""}</td><td class="t">${r.model||""}</td><td class="num">${r.power??""}</td>`+
-      `<td class="t">${(r.iesName||r.chon||"").replace(/_IESNA2002\.IES$/i,"")}</td>`+
+      `<td class="num">${auto(r.roadClass||"",r.autoClass,"Cấp đường do app tự xác định từ hình học")}</td>`+
+      `<td class="t">${r.model||""}</td><td class="num">${r.power??""}</td>`+
+      `<td class="t">${auto((r.iesName||r.chon||"").replace(/_IESNA2002\.IES$/i,""),r.autoSelect,"Bộ đèn do app tự chọn (công suất nhỏ nhất vẫn Đạt)")}</td>`+
       (r.status==="ok"?
         cell(fmt(r.Ltb))+cell(fmt(r.Uo))+cell(fmt(r.Ul))+cell(fmt(r.TI,0))+cell(fmt(r.SR)):
         `<td colspan="5" class="t" style="color:var(--muted)">${r.reason||""}</td>`)+
@@ -318,34 +324,64 @@ $("flt").onchange=drawRows; $("q").oninput=drawRows;
 // ---- Ghi/Tải kết quả ----
 $("btnSave").onclick = async () => {
   if(!results){ return; }
-  if(resultMode==="auto"){ setStatus("Chế độ 'Tự dò' không ghi đủ cột kết quả. Hãy chạy lại ở chế độ 'Từng phương án' rồi ghi.",true); return; }
+  if(resultMode==="auto"){ setStatus("Chế độ 'Tự dò' gộp theo tuyến. Hãy chạy ở chế độ 'Từng phương án' rồi ghi (mỗi dòng 1 kết quả).",true); return; }
   try{
     const ws=wb.Sheets[sheetName];
     const ref=XLSX.utils.decode_range(ws["!ref"]);
-    // tìm cột theo tiêu đề (hàng đầu)
+    // tìm cột kết quả theo tiêu đề (hàng đầu)
     const hdr={};
     for(let c=ref.s.c;c<=ref.e.c;c++){ const cell=ws[XLSX.utils.encode_cell({r:ref.s.r,c})]; if(cell&&cell.v!=null) hdr[String(cell.v).trim()]=c; }
     const resultCols=["Ltb KQ (cd/m²)","Uo KQ","Ul KQ","TI KQ (%)","SR KQ","En KQ (lx)","Kết quả"];
     const matched=resultCols.filter(n=>hdr[n]!=null);
-    if(matched.length===0){ setStatus("Không tìm thấy cột kết quả nào trong sheet (Ltb KQ, Uo KQ…). Kiểm tra tiêu đề cột.",true); return; }
-    // ghi tại ĐÚNG số hàng thật của sheet (sheet_to_json bỏ dòng trống -> dùng __rowNum__)
-    const put=(rowNum,colName,val)=>{ const c=hdr[colName]; if(c==null||val==null)return; ws[XLSX.utils.encode_cell({r:rowNum,c})]={t:typeof val==="number"?"n":"s",v:val}; };
-    results.forEach((r,i)=>{ if(r.status!=="ok")return; const rn=rows[i].__rowNum__; if(rn==null)return;
-      put(rn,"Ltb KQ (cd/m²)",+r.Ltb.toFixed(2)); put(rn,"Uo KQ",+r.Uo.toFixed(2)); put(rn,"Ul KQ",+r.Ul.toFixed(2));
-      put(rn,"TI KQ (%)",+r.TI.toFixed(0)); put(rn,"SR KQ",+r.SR.toFixed(2)); put(rn,"En KQ (lx)",+r.En.toFixed(1));
-      put(rn,"Kết quả",r.pass?"ĐẠT":"KHÔNG ĐẠT");
-    });
-    const out=XLSX.write(wb,{bookType:"xlsx",type:"array"});
-    // chỉ ghi đè tại chỗ khi file gốc là .xlsx; .xlsm hoặc khác -> tải file .xlsx mới (tránh hỏng macro)
-    const canOverwrite = hasFSA && xlsxHandle && /\.xlsx$/i.test(xlsxHandle.name||"");
-    if(canOverwrite){
-      try{ const w=await xlsxHandle.createWritable(); await w.write(out); await w.close(); setStatus(`Đã ghi ${matched.length} cột kết quả vào file Excel gốc.`); return; }
-      catch(_){ /* rơi xuống tải */ }
+
+    if(matched.length>0){
+      // (A) File gốc ĐÃ CÓ cột kết quả -> ghi tại đúng hàng thật (giữ nguyên bố cục)
+      const put=(rowNum,colName,val)=>{ const c=hdr[colName]; if(c==null||val==null)return; ws[XLSX.utils.encode_cell({r:rowNum,c})]={t:typeof val==="number"?"n":"s",v:val}; };
+      results.forEach((r,i)=>{ if(r.status!=="ok")return; const rn=rows[i].__rowNum__; if(rn==null)return;
+        put(rn,"Ltb KQ (cd/m²)",+r.Ltb.toFixed(2)); put(rn,"Uo KQ",+r.Uo.toFixed(2)); put(rn,"Ul KQ",+r.Ul.toFixed(2));
+        put(rn,"TI KQ (%)",+r.TI.toFixed(0)); put(rn,"SR KQ",+r.SR.toFixed(2)); put(rn,"En KQ (lx)",+r.En.toFixed(1));
+        put(rn,"Kết quả",r.pass?"ĐẠT":"KHÔNG ĐẠT");
+      });
+      const out=XLSX.write(wb,{bookType:"xlsx",type:"array"});
+      const canOverwrite = hasFSA && xlsxHandle && /\.xlsx$/i.test(xlsxHandle.name||"");
+      if(canOverwrite){
+        try{ const w=await xlsxHandle.createWritable(); await w.write(out); await w.close(); setStatus(`Đã ghi ${matched.length} cột kết quả vào file Excel gốc.`); return; }
+        catch(_){ /* rơi xuống tải */ }
+      }
+      const blob=new Blob([out],{type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"});
+      const a=Object.assign(document.createElement("a"),{href:URL.createObjectURL(blob),download:"KET_QUA_WEBDIALUX.xlsx"});
+      document.body.appendChild(a); a.click(); a.remove();
+      setStatus("Đã tạo file KET_QUA_WEBDIALUX.xlsx để tải (file .xlsm giữ nguyên tránh hỏng macro).");
+      return;
     }
-    const blob=new Blob([out],{type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"});
-    const a=Object.assign(document.createElement("a"),{href:URL.createObjectURL(blob),download:"KET_QUA_WEBDIALUX.xlsx"});
-    document.body.appendChild(a); a.click(); a.remove();
-    setStatus("Đã tạo file KET_QUA_WEBDIALUX.xlsx để tải (file .xlsm giữ nguyên để không hỏng macro; triển khai lên GitHub Pages để ghi trực tiếp vào .xlsx).");
+
+    // (B) File gốc CHỈ CÓ hình học -> dựng BẢNG KẾT QUẢ ĐẦY ĐỦ (cột gốc + cột app tính thêm)
+    // Lấy đúng thứ tự tiêu đề gốc từ hàng đầu của sheet
+    const srcHead=[];
+    for(let c=ref.s.c;c<=ref.e.c;c++){ const cell=ws[XLSX.utils.encode_cell({r:ref.s.r,c})]; srcHead.push(cell&&cell.v!=null?String(cell.v).trim():""); }
+    const addHead=["Cấp đường (tự xác định)","Bộ đèn chọn","Công suất (W)",
+                   "Ltb (cd/m²)","Uo","Ul","TI (%)","SR","En (lx)","Kết quả","Ghi chú"];
+    const aoa=[[...srcHead,...addHead]];
+    results.forEach((r,i)=>{
+      const src=srcHead.map(h=>{ const v=rows[i][h]; return v==null?"":v; });
+      let extra;
+      if(r.status==="ok"){
+        extra=[ (r.autoClass?r.roadClass:r.roadClass), (r.chon||r.iesName||"").replace(/_IESNA2002\.IES$/i,""),
+                r.power??"", +r.Ltb.toFixed(2), +r.Uo.toFixed(2), +r.Ul.toFixed(2),
+                +r.TI.toFixed(0), +r.SR.toFixed(2), +r.En.toFixed(1), r.pass?"ĐẠT":"KHÔNG ĐẠT",
+                r.autoSelect?"bộ đèn do app tự chọn":"" ];
+      } else {
+        extra=[ r.roadClass||"", "", "", "", "", "", "", "", "", r.status, r.reason||"" ];
+      }
+      aoa.push([...src,...extra]);
+    });
+    const wsOut=XLSX.utils.aoa_to_sheet(aoa);
+    wsOut["!cols"]=aoa[0].map(h=>({wch:Math.min(Math.max(String(h).length+2,8),26)}));
+    const wbOut=XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wbOut,wsOut,"Kết quả");
+    const out=XLSX.write(wbOut,{bookType:"xlsx",type:"array"});
+    await saveXlsxBuffer(out,"KET_QUA_WEBDIALUX.xlsx");
+    setStatus(`Đã tạo bảng kết quả đầy đủ (${results.length} dòng): cấp đường tự xác định, bộ đèn tự chọn, các chỉ số & kết luận Đạt/Không đạt.`);
   }catch(e){ setStatus("Lỗi ghi Excel: "+e.message,true); }
 };
 
@@ -361,14 +397,22 @@ $("btnPdf").onclick = async () => {
     const jsPDF = window.jspdf && window.jspdf.jsPDF;
     if(!jsPDF){ setStatus("Chưa tải được thư viện jsPDF (kiểm tra mạng/CDN).",true); return; }
     const MF=parseFloat($("mf").value)||0.8;
+    const byName=new Map(iesIndex.map(e=>[e.name,e]));
     let doc=null, made=0;
     for(const i of idxs){
-      const row=rows[i]; const g=rowToGeometry(row); const m=matchIES(g.meta, iesIndex); if(!m.ies) continue;
-      const input={...g.input, MF, detail:true};
-      let result; try{ result=calcRoad({ies:m.ies.ph, ...input}); }catch(_){ continue; }
+      const row=rows[i]; const g=rowToGeometry(row); const res=results[i];
+      // bộ đèn: dùng đúng IES mà bước tính đã chọn (iesName), không khớp lại theo model
+      let e = res && res.iesName ? byName.get(res.iesName) : null;
+      if(!e){ const m=matchIES(g.meta, iesIndex); e=m.ies; }
+      if(!e) continue;
+      // cấp đường: dùng cấp đã xác định ở bước tính (có thể là cấp tự phân)
+      const input={...g.input, roadClass: (res&&res.roadClass)||g.input.roadClass, MF, detail:true};
+      let result; try{ result=calcRoad({ies:e.ph, ...input}); }catch(_){ continue; }
       if(!doc) doc=makeDoc({jsPDF,font}); else doc.addPage();
-      renderRoadPage(doc,{input,result,ph:m.ies.ph,makeIntensity,
-        meta:{tuyen:g.meta.tuyen,model:g.meta.model,fitting:g.meta.fitting,power:g.meta.power,ncc:g.meta.ncc,iesName:m.ies.name}});
+      renderRoadPage(doc,{input,result,ph:e.ph,makeIntensity,
+        meta:{tuyen:g.meta.tuyen,model:g.meta.model||e.model||"",fitting:g.meta.fitting,
+              power:g.meta.power??e.power,ncc:g.meta.ncc,iesName:e.name,
+              autoClass:res&&res.autoClass,autoSelect:res&&res.autoSelect}});
       made++;
     }
     if(!doc){ setStatus("Không tạo được trang PDF nào (thiếu IES khớp).",true); return; }

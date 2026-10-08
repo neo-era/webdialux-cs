@@ -8,6 +8,7 @@ export function reportData(input, result, ph, meta = {}) {
   const checkRow = (sym, calc, target, ok, unit = "") => ({ sym, calc, target, ok, unit });
   return {
     tuyen: meta.tuyen || "", roadClass: result.roadClass,
+    autoClass: !!meta.autoClass, autoSelect: !!meta.autoSelect,
     luminaire: {
       model: meta.model || "", fitting: meta.fitting || "", ncc: meta.ncc || "",
       P: ph.inputWatts, lumens: ph.totalLumens, efficacy: eff, iesName: meta.iesName || "",
@@ -138,7 +139,8 @@ export function renderRoadPage(doc, { input, result, ph, meta, makeIntensity }) 
   doc.setFontSize(14); doc.text("WebDialux-CS — Báo cáo chiếu sáng (QCVN 07-7:2023)", M, y); y += 7;
   doc.setFontSize(11);
   doc.setTextColor(...(d.pass ? [31, 138, 76] : [192, 57, 43]));
-  doc.text(`Tuyến: ${d.tuyen}    Cấp đường: ${d.roadClass}    Kết luận: ${d.pass ? "ĐẠT" : "KHÔNG ĐẠT"}`, M, y);
+  const clsLbl = d.roadClass + (d.autoClass ? " (tự xác định)" : "");
+  doc.text(`Tuyến: ${d.tuyen}    Cấp đường: ${clsLbl}    Kết luận: ${d.pass ? "ĐẠT" : "KHÔNG ĐẠT"}`, M, y);
   doc.setTextColor(30, 30, 40); y += 8;
 
   // Thông số bộ đèn + Polar LDC
@@ -170,7 +172,7 @@ export function renderRoadPage(doc, { input, result, ph, meta, makeIntensity }) 
   ], { rh: 6.5, fs: 8.5 });
   y += 4.5;
   doc.setFontSize(7.8); doc.setTextColor(90, 100, 120);
-  doc.text("Mặt đường: " + I.surface + "    ·    File IES: " + L.iesName.replace(/_IESNA2002$/i, ""), M, y);
+  doc.text("Mặt đường: " + I.surface + "    ·    File IES: " + L.iesName.replace(/_IESNA2002$/i, "") + (d.autoSelect ? "  (app tự chọn)" : ""), M, y);
   doc.setTextColor(30, 30, 40); y += 6;
 
   // Bảng đánh giá

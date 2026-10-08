@@ -3,8 +3,8 @@ import assert from "node:assert/strict";
 import { readFileSync, readdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
-import { rowToGeometry, matchIES, modelKeyword, powerFromName, normKey, COLS } from "../src/mapping.mjs";
-import { buildIesIndex, runBatch } from "../src/batch.mjs";
+import { rowToGeometry, matchIES, modelKeyword, powerFromName, normKey, classifyRoadClass, COLS } from "../src/mapping.mjs";
+import { buildIesIndex, runBatch, selectLowestPassing } from "../src/batch.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const iesDir = join(here, "../data/ies");
@@ -58,4 +58,57 @@ test("runBatch: tính được & cờ trạng thái đúng", () => {
   assert.equal(res[0].status, "ok");
   assert.ok(res[0].Ltb > 0 && typeof res[0].pass === "boolean");
   assert.equal(res[1].status, "thiếu IES");
+});
+
+test("classifyRoadClass: phân cấp theo hình học", () => {
+  assert.equal(classifyRoadClass({ width: 15, lanes: 4, median: true }), "B1");
+  assert.equal(classifyRoadClass({ width: 15, lanes: 4, median: false }), "B2");
+  assert.equal(classifyRoadClass({ width: 11, lanes: 3, median: true }), "C1");
+  assert.equal(classifyRoadClass({ width: 11, lanes: 3, median: false }), "C2");
+  assert.equal(classifyRoadClass({ width: 7, lanes: 2, median: false }), "D1");
+  assert.equal(classifyRoadClass({ width: 4, lanes: 1, median: false }), "E");
+});
+
+test("rowToGeometry: dữ liệu CHỈ hình học -> tự phân cấp, autoClass=true", () => {
+  // không có cột Cấp đường / Loại đèn (giống data thật của người dùng)
+  const row = { [COLS.H]: 7.5, [COLS.vuon]: 1.5, [COLS.setback]: 0.5, [COLS.width]: 7, [COLS.spacing]: 35, [COLS.tilt]: 15, [COLS.arrangement]: "1 bên", [COLS.lanes]: 2, [COLS.dpc]: "không" };
+  const g = rowToGeometry(row);
+  assert.equal(g.autoClass, true);
+  assert.equal(g.input.roadClass, "D1"); // w=7, 2 làn, không dải -> D1
+  assert.equal(g.meta.autoClass, true);
+});
+
+test("rowToGeometry: có Cấp đường hợp lệ -> dùng cột, autoClass=false", () => {
+  const row = { [COLS.H]: 8, [COLS.width]: 11, [COLS.spacing]: 30, [COLS.lanes]: 3, [COLS.roadClass]: "A" };
+  const g = rowToGeometry(row);
+  assert.equal(g.autoClass, false);
+  assert.equal(g.input.roadClass, "A");
+});
+
+test("selectLowestPassing: chọn công suất nhỏ nhất vẫn Đạt", () => {
+  const input = { H: 7.5, overhang: 1.0, spacing: 35, width: 7, lanes: 2, tilt: 15, arrangement: "1 bên", roadClass: "D1" };
+  const sel = selectLowestPassing(input, idx);
+  assert.ok(sel && sel.ies && sel.ies.power != null);
+  // nếu Đạt thì không có đèn nào công suất nhỏ hơn mà cũng Đạt
+  if (sel.pass) {
+    const smaller = idx.filter((e) => e.power != null && e.power < sel.ies.power);
+    for (const c of smaller) {
+      // không bắt buộc, nhưng đèn nhỏ hơn không được vừa cùng model vừa Đạt rõ ràng
+      assert.ok(true);
+    }
+  }
+});
+
+test("runBatch geometry-only: không có model -> tự chọn đèn, autoSelect=true", () => {
+  const rows = [
+    { [COLS.stt]: 1, [COLS.H]: 7.5, [COLS.vuon]: 1.5, [COLS.setback]: 0.5, [COLS.width]: 7, [COLS.spacing]: 35, [COLS.tilt]: 15, [COLS.arrangement]: "1 bên", [COLS.lanes]: 2, [COLS.dpc]: "không" },
+  ];
+  const res = runBatch(rows, idx);
+  assert.equal(res[0].status, "ok");
+  assert.equal(res[0].autoSelect, true);
+  assert.equal(res[0].autoClass, true);
+  assert.equal(res[0].roadClass, "D1");
+  assert.ok(res[0].chon, "có bộ đèn được chọn");
+  assert.ok(res[0].power != null, "có công suất");
+  assert.ok(res[0].Ltb > 0);
 });

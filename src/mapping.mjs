@@ -7,10 +7,25 @@ export const COLS = {
   setback: "Khoảng cách trụ đến mép đường (m)", width: "Độ rộng lòng đường (m)",
   spacing: "Khoảng cách trụ TB (m)", lanes: "Số làn xe", tilt: "Góc nghiêng bộ đèn (độ)",
   arrangement: "Cách bố trí trụ", roadClass: "Cấp đường",
+  dpc: "Dải phân cách giữa", luuluong: "Lưu lượng xe",
   model: "Loại đèn", fitting: "Fitting", power: "Công suất LED (W)", ncc: "Nhà cung cấp",
 };
 
 const num = (v) => { const n = parseFloat(String(v).replace(",", ".")); return Number.isFinite(n) ? n : null; };
+
+const VALID_CLASS = /^(A|B1|B2|C1|C2|D1|D2|E)$/;
+
+/**
+ * Tự phân cấp đường (QCVN 07-7:2023) từ hình học khi dữ liệu không ghi cấp.
+ * Dựa vào bề rộng, số làn, dải phân cách. (Heuristic — người dùng có thể ghi đè bằng cột "Cấp đường".)
+ */
+export function classifyRoadClass({ width, lanes, median }) {
+  const w = width || 0, L = lanes || 0;
+  if (w >= 14 || L >= 4) return median ? "B1" : "B2";   // trục chính / liên khu vực
+  if (w >= 10 || L >= 3) return median ? "C1" : "C2";   // cấp khu vực có buôn bán
+  if (w >= 5) return "D1";                              // cấp khu vực
+  return "E";                                           // nội bộ / hẻm nhỏ
+}
 
 /** Dòng Excel -> input hình học engine (chưa gồm ies). Trả {input, warnings[]}. */
 export function rowToGeometry(row) {
@@ -23,23 +38,31 @@ export function rowToGeometry(row) {
   let lanes = num(row[COLS.lanes]);
   const tilt = num(row[COLS.tilt]) ?? 0;
   const arrangement = (row[COLS.arrangement] || "1 bên").toString().trim();
-  const roadClass = (row[COLS.roadClass] || "").toString().trim().toUpperCase();
 
   if (H == null) w.push("thiếu Độ cao H");
   if (width == null) w.push("thiếu Độ rộng lòng đường");
   if (spacing == null) w.push("thiếu Khoảng cách trụ");
-  if (!lanes || lanes < 1) { lanes = Math.max(1, Math.round((width || 7) / 3.5)); w.push("thiếu Số làn — ước lượng"); }
-  if (!/^(A|B1|B2|C1|C2|D1|D2|E)$/.test(roadClass)) w.push("Cấp đường lạ: " + roadClass);
+  if (!lanes || lanes < 1) { lanes = Math.max(1, Math.round((width || 7) / 3.5)); w.push("ước lượng số làn"); }
+
+  // Cấp đường: lấy từ cột nếu hợp lệ, không thì TỰ PHÂN theo hình học
+  let roadClass = (row[COLS.roadClass] || "").toString().trim().toUpperCase();
+  let autoClass = false;
+  if (!VALID_CLASS.test(roadClass)) {
+    const dpc = String(row[COLS.dpc] || "").toLowerCase();
+    const median = /\bcó\b|\bco\b|yes|true/.test(dpc) && !/không|khong/.test(dpc);
+    roadClass = classifyRoadClass({ width, lanes, median });
+    autoClass = true;
+  }
 
   const overhang = vuon - setback; // net light-point so với mép gần
   return {
-    input: { H, overhang, spacing, width, lanes, tilt, arrangement, roadClass: roadClass || "D1" },
-    warnings: w,
+    input: { H, overhang, spacing, width, lanes, tilt, arrangement, roadClass },
+    warnings: w, autoClass,
     meta: {
       stt: row[COLS.stt], tuyen: row[COLS.tuyen],
       model: (row[COLS.model] || "").toString().trim(),
       fitting: (row[COLS.fitting] || "").toString().trim(),
-      power: num(row[COLS.power]), ncc: row[COLS.ncc],
+      power: num(row[COLS.power]), ncc: row[COLS.ncc], autoClass,
     },
   };
 }
