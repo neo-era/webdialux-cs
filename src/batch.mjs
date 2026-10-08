@@ -53,7 +53,7 @@ export function runBatch(rows, iesIndex, opts = {}) {
     const g = rowToGeometry(row);
     const base = {
       stt: g.meta.stt, tuyen: g.meta.tuyen, model: g.meta.model, power: g.meta.power,
-      warnings: g.warnings, autoClass: g.autoClass, roadClass: g.input.roadClass,
+      warnings: g.warnings, autoClass: g.autoClass, classSource: g.classSource, roadClass: g.input.roadClass,
     };
     if (g.input.H == null || g.input.width == null || g.input.spacing == null) {
       return { ...base, status: "thiếu hình học", reason: g.warnings.join("; ") };

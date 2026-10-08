@@ -8,7 +8,7 @@ export function reportData(input, result, ph, meta = {}) {
   const checkRow = (sym, calc, target, ok, unit = "") => ({ sym, calc, target, ok, unit });
   return {
     tuyen: meta.tuyen || "", roadClass: result.roadClass,
-    autoClass: !!meta.autoClass, autoSelect: !!meta.autoSelect,
+    autoClass: !!meta.autoClass, autoSelect: !!meta.autoSelect, classSource: meta.classSource || "",
     luminaire: {
       model: meta.model || "", fitting: meta.fitting || "", ncc: meta.ncc || "",
       P: ph.inputWatts, lumens: ph.totalLumens, efficacy: eff, iesName: meta.iesName || "",
@@ -139,7 +139,8 @@ export function renderRoadPage(doc, { input, result, ph, meta, makeIntensity }) 
   doc.setFontSize(14); doc.text("WebDialux-CS — Báo cáo chiếu sáng (QCVN 07-7:2023)", M, y); y += 7;
   doc.setFontSize(11);
   doc.setTextColor(...(d.pass ? [31, 138, 76] : [192, 57, 43]));
-  const clsLbl = d.roadClass + (d.autoClass ? " (tự xác định)" : "");
+  const clsNote = d.classSource === "loại tuyến" ? " (theo loại tuyến)" : d.classSource === "hình học" ? " (tự xác định)" : "";
+  const clsLbl = d.roadClass + clsNote;
   doc.text(`Tuyến: ${d.tuyen}    Cấp đường: ${clsLbl}    Kết luận: ${d.pass ? "ĐẠT" : "KHÔNG ĐẠT"}`, M, y);
   doc.setTextColor(30, 30, 40); y += 8;
 

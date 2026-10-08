@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { readFileSync, readdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
-import { rowToGeometry, matchIES, modelKeyword, powerFromName, normKey, classifyRoadClass, COLS } from "../src/mapping.mjs";
+import { rowToGeometry, matchIES, modelKeyword, powerFromName, normKey, classifyRoadClass, classifyFromType, COLS } from "../src/mapping.mjs";
 import { buildIesIndex, runBatch, selectLowestPassing } from "../src/batch.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -82,7 +82,37 @@ test("rowToGeometry: có Cấp đường hợp lệ -> dùng cột, autoClass=fa
   const row = { [COLS.H]: 8, [COLS.width]: 11, [COLS.spacing]: 30, [COLS.lanes]: 3, [COLS.roadClass]: "A" };
   const g = rowToGeometry(row);
   assert.equal(g.autoClass, false);
+  assert.equal(g.classSource, "cột");
   assert.equal(g.input.roadClass, "A");
+});
+
+test("classifyFromType: quy đổi loại tuyến -> cấp đường", () => {
+  assert.equal(classifyFromType("đường cao tốc đô thị"), "A");
+  assert.equal(classifyFromType("trục chính", { median: true }), "B1");
+  assert.equal(classifyFromType("trục chính", { median: false }), "B2");
+  assert.equal(classifyFromType("khu buôn bán", { median: true }), "C1");
+  assert.equal(classifyFromType("phố thương mại", { median: false }), "C2");
+  assert.equal(classifyFromType("khu dân cư"), "D1");
+  assert.equal(classifyFromType("khu dân cư hè tối"), "D2");
+  assert.equal(classifyFromType("hẻm nội bộ"), "E");
+  assert.equal(classifyFromType("xyz không rõ"), null);
+  assert.equal(classifyFromType(""), null);
+});
+
+test("rowToGeometry: ưu tiên Loại tuyến trước hình học", () => {
+  // hình học (W=7,2 làn) sẽ ra D1, nhưng Loại tuyến='trục chính' + có dải -> B1
+  const row = { [COLS.H]: 8, [COLS.width]: 7, [COLS.spacing]: 30, [COLS.lanes]: 2, [COLS.dpc]: "có", [COLS.loaituyen]: "trục chính" };
+  const g = rowToGeometry(row);
+  assert.equal(g.autoClass, true);
+  assert.equal(g.classSource, "loại tuyến");
+  assert.equal(g.input.roadClass, "B1");
+});
+
+test("rowToGeometry: Cấp đường hợp lệ thắng cả Loại tuyến", () => {
+  const row = { [COLS.H]: 8, [COLS.width]: 7, [COLS.spacing]: 30, [COLS.lanes]: 2, [COLS.roadClass]: "C2", [COLS.loaituyen]: "trục chính" };
+  const g = rowToGeometry(row);
+  assert.equal(g.classSource, "cột");
+  assert.equal(g.input.roadClass, "C2");
 });
 
 test("selectLowestPassing: chọn công suất nhỏ nhất vẫn Đạt", () => {
@@ -107,6 +137,7 @@ test("runBatch geometry-only: không có model -> tự chọn đèn, autoSelect=
   assert.equal(res[0].status, "ok");
   assert.equal(res[0].autoSelect, true);
   assert.equal(res[0].autoClass, true);
+  assert.equal(res[0].classSource, "hình học");
   assert.equal(res[0].roadClass, "D1");
   assert.ok(res[0].chon, "có bộ đèn được chọn");
   assert.ok(res[0].power != null, "có công suất");

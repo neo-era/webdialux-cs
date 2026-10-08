@@ -6,7 +6,7 @@ export const COLS = {
   H: "Độ cao bộ đèn (m)", vuon: "Độ vươn cần đèn (m)",
   setback: "Khoảng cách trụ đến mép đường (m)", width: "Độ rộng lòng đường (m)",
   spacing: "Khoảng cách trụ TB (m)", lanes: "Số làn xe", tilt: "Góc nghiêng bộ đèn (độ)",
-  arrangement: "Cách bố trí trụ", roadClass: "Cấp đường",
+  arrangement: "Cách bố trí trụ", roadClass: "Cấp đường", loaituyen: "Loại tuyến",
   dpc: "Dải phân cách giữa", luuluong: "Lưu lượng xe",
   model: "Loại đèn", fitting: "Fitting", power: "Công suất LED (W)", ncc: "Nhà cung cấp",
 };
@@ -27,6 +27,33 @@ export function classifyRoadClass({ width, lanes, median }) {
   return "E";                                           // nội bộ / hẻm nhỏ
 }
 
+/**
+ * Quy đổi "Loại tuyến" (chữ người dùng ghi) -> cấp đường QCVN 07-7:2023.
+ * Theo mô tả cấp trong tiêu chuẩn; B/C tách 1/2 theo có/không dải phân cách giữa.
+ * Trả null nếu không nhận ra loại -> để lớp gọi lùi về phân theo hình học.
+ */
+export function classifyFromType(typeText, { median } = {}) {
+  const s = String(typeText || "").toLowerCase().normalize("NFC").trim();
+  if (!s) return null;
+  const has = (...kw) => kw.some((k) => s.includes(k));
+  // A — cao tốc đô thị
+  if (has("cao tốc", "cao toc")) return "A";
+  // B — trục chính / liên khu vực / đường chính đô thị
+  if (has("trục chính", "truc chinh", "liên khu vực", "lien khu vuc", "đường chính", "duong chinh", "trục", "truc", "quốc lộ", "quoc lo", "đại lộ", "dai lo"))
+    return median ? "B1" : "B2";
+  // C — khu vực có buôn bán / thương mại
+  if (has("buôn bán", "buon ban", "thương mại", "thuong mai", "chợ", "cho ", "mua sắm", "mua sam", "phố thương", "thị tứ", "thi tu"))
+    return median ? "C1" : "C2";
+  // D — cấp khu vực / khu dân cư (D1 hè sáng mặc định; D2 nếu ghi "hè tối")
+  if (has("hè tối", "he toi", "ít người", "it nguoi", "vắng", "vang")) return "D2";
+  if (has("khu dân cư", "khu dan cu", "dân cư", "dan cu", "khu ở", "khu o", "khu vực", "khu vuc", "phân khu", "phan khu", "khu đô thị", "khu do thi", "gom"))
+    return "D1";
+  // E — nội bộ / hẻm / ngõ / đường nhánh nhỏ
+  if (has("nội bộ", "noi bo", "hẻm", "hem", "ngõ", "ngo", "nhánh", "nhanh", "nội khu", "noi khu", "đường nhỏ", "duong nho"))
+    return "E";
+  return null;
+}
+
 /** Dòng Excel -> input hình học engine (chưa gồm ies). Trả {input, warnings[]}. */
 export function rowToGeometry(row) {
   const w = [];
@@ -44,25 +71,31 @@ export function rowToGeometry(row) {
   if (spacing == null) w.push("thiếu Khoảng cách trụ");
   if (!lanes || lanes < 1) { lanes = Math.max(1, Math.round((width || 7) / 3.5)); w.push("ước lượng số làn"); }
 
-  // Cấp đường: lấy từ cột nếu hợp lệ, không thì TỰ PHÂN theo hình học
+  // Cấp đường — thứ tự ưu tiên:
+  //  (1) cột "Cấp đường" nếu hợp lệ  -> dùng thẳng (classSource="cột")
+  //  (2) cột "Loại tuyến" quy đổi được -> dùng (classSource="loại tuyến")
+  //  (3) đoán theo hình học           -> (classSource="hình học")
   let roadClass = (row[COLS.roadClass] || "").toString().trim().toUpperCase();
-  let autoClass = false;
+  let autoClass = false, classSource = "cột";
   if (!VALID_CLASS.test(roadClass)) {
-    const dpc = String(row[COLS.dpc] || "").toLowerCase();
-    const median = /\bcó\b|\bco\b|yes|true/.test(dpc) && !/không|khong/.test(dpc);
-    roadClass = classifyRoadClass({ width, lanes, median });
+    const dpc = String(row[COLS.dpc] || "").toLowerCase().trim();
+    const noMedian = dpc === "" || dpc.includes("không") || dpc.includes("khong") || dpc === "0" || dpc === "no" || dpc === "false";
+    const median = !noMedian && (dpc.includes("có") || dpc.includes("co") || dpc.includes("yes") || dpc.includes("true") || dpc === "1");
+    const fromType = classifyFromType(row[COLS.loaituyen], { median });
+    if (fromType) { roadClass = fromType; classSource = "loại tuyến"; }
+    else { roadClass = classifyRoadClass({ width, lanes, median }); classSource = "hình học"; }
     autoClass = true;
   }
 
   const overhang = vuon - setback; // net light-point so với mép gần
   return {
     input: { H, overhang, spacing, width, lanes, tilt, arrangement, roadClass },
-    warnings: w, autoClass,
+    warnings: w, autoClass, classSource,
     meta: {
       stt: row[COLS.stt], tuyen: row[COLS.tuyen],
       model: (row[COLS.model] || "").toString().trim(),
       fitting: (row[COLS.fitting] || "").toString().trim(),
-      power: num(row[COLS.power]), ncc: row[COLS.ncc], autoClass,
+      power: num(row[COLS.power]), ncc: row[COLS.ncc], autoClass, classSource,
     },
   };
 }
