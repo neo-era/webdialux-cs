@@ -256,12 +256,15 @@ export function renderRoadPage(doc, { input, result, ph, meta, makeIntensity }) 
   const d = reportData(input, result, ph, meta);
   const M = 14, W = 210; let y = 16;
 
-  doc.setFontSize(14); doc.text("WebDialux-CS — Báo cáo chiếu sáng (QCVN 07-7:2023)", M, y); y += 7;
-  doc.setFontSize(11);
-  doc.setTextColor(...(d.pass ? [31, 138, 76] : [192, 57, 43]));
   const clsNote = d.classSource === "loại tuyến" ? " (theo loại tuyến)" : d.classSource === "hình học" ? " (tự xác định)" : "";
   const clsLbl = d.roadClass + clsNote;
-  doc.text(`Tuyến: ${d.tuyen}    Cấp đường: ${clsLbl}    Kết luận: ${d.pass ? "ĐẠT" : "KHÔNG ĐẠT"}`, M, y);
+  doc.setFontSize(15); doc.setTextColor(25, 30, 40);
+  doc.text(d.tuyen || "Tuyến chiếu sáng", M, y); y += 6;
+  doc.setFontSize(10); doc.setTextColor(95, 105, 120);
+  doc.text("BÁO CÁO TÍNH TOÁN CHIẾU SÁNG ĐƯỜNG — Tiêu chuẩn QCVN 07-7:2023 (phương pháp CIE 140)", M, y); y += 7;
+  doc.setFontSize(11);
+  doc.setTextColor(...(d.pass ? [31, 138, 76] : [192, 57, 43]));
+  doc.text(`Cấp đường: ${clsLbl}        Kết luận: ${d.pass ? "ĐẠT" : "KHÔNG ĐẠT"}`, M, y);
   doc.setTextColor(30, 30, 40); y += 8;
 
   // Mặt bằng bố trí
