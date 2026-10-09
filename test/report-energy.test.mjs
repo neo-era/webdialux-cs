@@ -48,3 +48,14 @@ test("parseIES: rút Article No. / tên bộ đèn / NSX từ keyword", () => {
   assert.ok(ph.cct === null || /^\d+$/.test(ph.cct));
   assert.ok(ph.cri === null || /^\d+$/.test(ph.cri));
 });
+
+test("articleNoOf: khử lặp khi [LAMP] đã chứa [LUMCAT] (ca CARINA)", async () => {
+  const { articleNoOf } = await import("../src/report.mjs");
+  // LAMP chứa LUMCAT -> chỉ lấy LAMP, không lặp đôi
+  assert.equal(articleNoOf({ lumcat: "CARINA MIDI 48SE8L4D4HII 70W", lampCode: "CARINA MIDI 48SE8L4D4HII 70W" }), "CARINA MIDI 48SE8L4D4HII 70W");
+  assert.equal(articleNoOf({ lumcat: "CARINA", lampCode: "CARINA MIDI 48SE8L4D4HII 70W" }), "CARINA MIDI 48SE8L4D4HII 70W");
+  // không chứa nhau -> ghép
+  assert.equal(articleNoOf({ lumcat: "MAGNOLIA", lampCode: "BL-STR16A-PD36-60W" }), "MAGNOLIA BL-STR16A-PD36-60W");
+  // thiếu cả hai -> dùng model
+  assert.equal(articleNoOf({}, { model: "X" }), "X");
+});

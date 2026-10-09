@@ -1,6 +1,18 @@
 // Tạo báo cáo PDF kiểu DIALux cho 1 tuyến/phương án.
 // Phần thuần dữ liệu (reportData) test được ở Node; phần vẽ canvas + jsPDF chạy ở trình duyệt.
 
+/** Mã bộ đèn (Article No.) từ [LUMCAT] + [LAMP], khử lặp khi một bên đã chứa bên kia. */
+export function articleNoOf(ph, meta = {}) {
+  const a = (ph.lumcat || "").trim(), b = (ph.lampCode || "").trim();
+  const na = a.toUpperCase().replace(/\s+/g, " "), nb = b.toUpperCase().replace(/\s+/g, " ");
+  if (a && b) {
+    if (nb.includes(na)) return b;          // LAMP đã chứa LUMCAT
+    if (na.includes(nb)) return a;          // LUMCAT đã chứa LAMP
+    return a + " " + b;
+  }
+  return a || b || meta.model || "";
+}
+
 /** Gom dữ liệu báo cáo (thuần, không phụ thuộc DOM). */
 export function reportData(input, result, ph, meta = {}) {
   const req = result.req, road = result.road, c = result.checks;
@@ -11,7 +23,7 @@ export function reportData(input, result, ph, meta = {}) {
     autoClass: !!meta.autoClass, autoSelect: !!meta.autoSelect, classSource: meta.classSource || "",
     luminaire: {
       model: meta.model || ph.lumcat || "",
-      articleNo: (ph.lumcat ? ph.lumcat + (ph.lampCode ? " " + ph.lampCode : "") : (ph.lampCode || meta.model || "")),
+      articleNo: articleNoOf(ph, meta),
       articleName: ph.luminaireName || "",
       fitting: meta.fitting || "", ncc: meta.ncc || ph.manufac || "",
       P: ph.inputWatts,
@@ -174,7 +186,9 @@ export function planDataURL(d, doc = globalThis.document) {
   // trụ + đèn: hàng gần tại y=overhang, hàng xa tại y=W-overhang
   const pole = (xx, yy) => {
     ctx.fillStyle = "#4b5563"; ctx.beginPath(); ctx.arc(xx, yy, 5, 0, 2 * Math.PI); ctx.fill();
-    ctx.strokeStyle = "#4b5563"; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(xx, yy); ctx.lineTo(xx, Y(ov) < yy ? Y(ov) - 14 : Y(ov) + 14); ctx.stroke();
+    // chân trụ: tick ngắn hướng RA NGOÀI mép đường (trụ gần hướng lên, trụ xa hướng xuống)
+    const dir = yy < Y(W / 2) ? -1 : 1;
+    ctx.strokeStyle = "#4b5563"; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(xx, yy); ctx.lineTo(xx, yy + dir * 14); ctx.stroke();
   };
   const near = (k) => pole(X(k * S), Y(ov));
   const far = (k, off = 0) => pole(X(k * S + off), Y(W - ov));
@@ -360,9 +374,17 @@ export function armDataURL(d, doc = globalThis.document) {
 // ---- Dựng PDF (trình duyệt): cần jsPDF + font Unicode + makeIntensity ----
 const vn = (x, d = 2) => (x == null || !isFinite(x)) ? "—" : Number(x).toFixed(d).replace(".", ",");
 
+/** Cắt chữ bằng "…" cho vừa bề rộng maxW (mm) ở cỡ chữ hiện tại. */
+function fitText(doc, txt, maxW) {
+  let s = String(txt ?? "");
+  if (doc.getTextWidth(s) <= maxW) return s;
+  const ell = "…";
+  while (s.length > 1 && doc.getTextWidth(s + ell) > maxW) s = s.slice(0, -1);
+  return s + ell;
+}
+
 function drawTable(doc, x, y, cols, rows, opt = {}) {
   const rh = opt.rh || 7, fs = opt.fs || 9;
-  doc.setFontSize(fs);
   let cy = y;
   rows.forEach((row, ri) => {
     let cx = x;
@@ -371,11 +393,16 @@ function drawTable(doc, x, y, cols, rows, opt = {}) {
       doc.setDrawColor(200); doc.setFillColor(head ? 235 : 255, head ? 238 : 255, head ? 244 : 255);
       doc.rect(cx, cy, w, rh, "FD");
       const cell = row[ci];
-      const txt = cell == null ? "" : String(cell.t != null ? cell.t : cell);
+      const raw = cell == null ? "" : String(cell.t != null ? cell.t : cell);
       const align = (cell && cell.a) || (ci === 0 ? "left" : "right");
       doc.setTextColor(cell && cell.c ? cell.c[0] : 30, cell && cell.c ? cell.c[1] : 30, cell && cell.c ? cell.c[2] : 40);
+      // chữ dài: thu cỡ tới 6.5pt, còn dài nữa thì cắt "…" — không bao giờ tràn ô
+      let size = fs; doc.setFontSize(size);
+      while (size > 6.5 && doc.getTextWidth(raw) > w - 4) { size -= 0.5; doc.setFontSize(size); }
+      const txt = fitText(doc, raw, w - 4);
       const tx = align === "left" ? cx + 2 : (align === "center" ? cx + w / 2 : cx + w - 2);
       doc.text(txt, tx, cy + rh - 2.2, { align });
+      doc.setFontSize(fs);
       cx += w;
     });
     cy += rh;
@@ -433,7 +460,7 @@ export function renderRoadPage(doc, { input, result, ph, meta, makeIntensity }) 
   if (y + 72 > 284) { doc.addPage(); y = 16; }
   doc.setFontSize(10.5); doc.text("Thông số bộ đèn", M, y); y += 2;
   const L = d.luminaire;
-  const yAfter = drawTable(doc, M, y, [36, 64], [
+  const yAfter = drawTable(doc, M, y, [46, 56], [
     [{ t: "Nhà cung cấp", c: [90, 100, 120] }, L.ncc || "—"],
     ["Mã bộ đèn", L.articleNo || "—"],
     ["Tên bộ đèn", L.articleName || L.model || "—"],
@@ -465,7 +492,7 @@ export function renderRoadPage(doc, { input, result, ph, meta, makeIntensity }) 
     : /giữa/i.test(I.arrangement) ? "trên dải phân cách" : "một bên";
   if (y + 70 > 284) { doc.addPage(); y = 16; }
   doc.setFontSize(9.6); doc.setTextColor(40, 46, 58);
-  doc.text(L.iesName.replace(/_IESNA2002$/i, "") + "  (" + arrText + ")", M, y); y += 3;
+  doc.text(fitText(doc, L.iesName.replace(/_IESNA2002(\.IES)?$/i, "") + "  (" + arrText + ")", 182), M, y); y += 3;
   doc.setTextColor(30, 30, 40);
   const Lcol = 70, Vcol = 62;
   const yI = drawTable(doc, M, y, [Lcol, Vcol], [
