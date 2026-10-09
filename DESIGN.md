@@ -41,3 +41,17 @@ Mục tiêu vòng 1: lõi tính toán CIE 140 chạy được + test + đối ch
 - **R3 table**: đang dùng bản nạp ngoài, cần xác nhận với CIE 144 chính thức.
 - **Tilt/định hướng IES**: dùng convention chuẩn; cần calib với lưới độ rọi ĐX-073 (cần IES khớp).
 - Chưa xử lý dải phân cách giữa, bố trí "giữa" cần đôi (để vòng sau).
+
+## Excel kết quả có công thức sống (src/xlsxpro.mjs)
+Mục tiêu: sửa số trong Excel → Kết quả/điểm/hạng/✓/tổng hợp tự tính lại; mở file thấy ngay kết quả (công thức kèm giá trị cache + `fullCalcOnLoad`).
+- Ghi số **gốc chưa làm tròn** (hiển thị bằng numFmt) — app so Đạt trên giá trị làm tròn nhưng chấm Borda trên giá trị gốc.
+- Sheet 1, nhóm tuyến = dải dòng a..b, YC ở dòng đầu nhóm ($N$a…):
+  - Kết quả = `IF(AND(ROUND(W,2)>=N,ROUND(X,2)>=O,ROUND(Y,2)>=P,ROUND(Z,0)<=Q,ROUND(AA,2)>=R),"ĐẠT","KHÔNG ĐẠT")`
+  - Điểm Borda = `SUMPRODUCT((AC_g="ĐẠT")*(W_g<=W))` (TI: `>=`). Không dùng COUNTIFS `"<="&ô` (đổi số → chuỗi 15 chữ số, lệch điểm).
+  - Tổng 2 = số đối thủ trong nhóm đồng Tổng 1 cao nhất bị thắng ≥ 3/5 tiêu chí (SUMPRODUCT).
+  - Hạng = 1 + số phương án Đạt tốt hơn theo (CS nhỏ hơn) → (Tổng 1, Tổng 2 cao hơn) → (Ltb cao hơn) → hoà tuyệt đối thì dòng trên trước (SUMPRODUCT trên dải con a..n-1, giống sort ổn định của app; không dùng ROW(dải)); ✓ = Hạng 1.
+  - Chế độ Từng phương án (app không chấm điểm): cột điểm để trống; Hạng/✓ = IF(Kết quả="ĐẠT").
+- Sheet 3: bộ đèn/chỉ tiêu chọn = INDEX/MATCH dòng ✓ của nhóm ở sheet 1; Kết quả theo có/không ✓.
+- Sheet 2: Số tuyến/Số bộ/kW = SUMPRODUCT so bằng trên sheet 3 theo (Hãng, Loại, CS) — không dùng COUNTIFS vì * ? ~ trong tên đèn thành ký tự đại diện; TỔNG CỘNG = SUM. Danh sách tổ hợp cố định theo lúc xuất (sửa số làm đổi đèn chọn sang tổ hợp mới thì không tự thêm dòng).
+- Kiểm chứng: test/xlsxformula.test.mjs tính lại toàn bộ công thức bằng HyperFormula (`useArrayArithmetic: true` — bắt buộc để SUMPRODUCT tính mảng như Excel) và so với kết quả app. Đã đối chiếu thêm bằng Excel 16 thật qua COM (786 tuyến, 19.886 ô + bộ IES trùng 35.406 ô: lệch 0).
+- Hạn chế còn lại: màu tô (dòng ✓, ô Kết quả) là tĩnh, không đổi theo khi sửa số; sắp xếp lại sheet 1 làm hỏng dải nhóm; bản dự phòng SheetJS (khi không tải được ExcelJS) vẫn chỉ có giá trị.

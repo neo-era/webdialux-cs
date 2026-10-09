@@ -50,7 +50,7 @@ test("buildResultWorkbook: 3 sheet, tiêu đề, header định dạng, dòng d�
   assert.ok(ws.rowCount > 4, "có dòng dữ liệu");
   // dòng bộ đèn được chọn có ✓ và tô màu
   let found = false;
-  ws.eachRow((row, n) => { if (n > 4 && row.getCell(38).value === "✓") { found = true; assert.equal(row.getCell(1 + 19 - 1).fill?.fgColor?.argb, "FFE2F0D9"); } });
+  ws.eachRow((row, n) => { if (n > 4 && (row.getCell(38).value?.result ?? row.getCell(38).value) === "✓") { found = true; assert.equal(row.getCell(1 + 19 - 1).fill?.fgColor?.argb, "FFE2F0D9"); } });
   assert.ok(found, "có dòng ✓ chọn");
   // tuyến thiếu hình học vẫn có dòng với trạng thái
   let thieu = false; ws.eachRow((row) => { if (String(row.getCell(29).value || "").includes("thiếu hình học")) thieu = true; });

@@ -19,6 +19,7 @@
   },
   "devDependencies": {
     "@napi-rs/canvas": "^1.0.10",
-    "exceljs": "^4.4.0"
+    "exceljs": "^4.4.0",
+    "hyperformula": "^3.5.0"
   }
 }

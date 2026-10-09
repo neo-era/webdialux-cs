@@ -45,6 +45,8 @@ const r0 = (x) => (x == null || !isFinite(x)) ? null : Math.round(x);
 const srcLbl = (cs) => cs === "loại tuyến" ? "quy đổi từ loại tuyến" : cs === "hình học" ? "tự xác định (hình học)" : "nhập trực tiếp";
 const arrLbl = (a) => /đối xứng|doi xung/i.test(a || "") ? "hai bên đối diện" : /so le|staggered/i.test(a || "") ? "hai bên so le" : /giữa/i.test(a || "") ? "trên dải phân cách" : "một bên";
 const nSideOf = (a) => /đối xứng|doi xung|so le|staggered/i.test(a || "") ? 2 : 1;
+const raw = (x) => (x == null || !isFinite(x)) ? null : x;
+const F = (formula, result) => ({ formula, result: result ?? "" });
 const cleanIes = (s) => String(s || "").replace(/_IESNA2002\.IES$/i, "").replace(/\.ies$/i, "");
 
 /** Ước tính số bộ đèn 1 tuyến: ưu tiên cột SL trong Excel, không có thì ceil(L/S)·nSide. */
@@ -105,6 +107,8 @@ function title(ws, text, sub, ncols) {
 export async function buildResultWorkbook(ExcelJS, { results, rows = [], q0 = 0.08, MF = 0.8, version = VERSION, date = new Date(), projectName = "" }) {
   const wb = new ExcelJS.Workbook();
   wb.creator = "WebDialux-CS"; wb.created = date;
+  // Công thức kèm giá trị cache (trình xem không tự tính vẫn thấy kết quả); Excel tính lại khi mở.
+  wb.calcProperties.fullCalcOnLoad = true;
   const dstr = date.toLocaleDateString("vi-VN"), tstr = date.toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" });
   const sub = `${projectName ? projectName + " · " : ""}Ngày tính ${dstr} ${tstr} · WebDialux-CS ${version} · QCVN 07-7:2023 · CIE 140 · mặt đường CIE R3 q0 ${String(q0).replace(".", ",")} · MF ${String(MF).replace(".", ",")} · ${results.length} tuyến`;
 
@@ -121,7 +125,8 @@ export async function buildResultWorkbook(ExcelJS, { results, rows = [], q0 = 0.
   const widths = [6, 30, 9, 16, 18, 10, 9, 7, 9, 8, 9, 9, 14, 8, 7, 7, 9, 7, 16, 28, 10, 34, 8, 7, 7, 9, 7, 9, 13, 7, 7, 7, 7, 7, 9, 9, 6, 6];
   widths.forEach((w, i) => { ws.getColumn(i + 1).width = w; });
   let zebra = false;
-  results.forEach((r) => {
+  const groupOf = []; // dải dòng sheet 1 của từng tuyến (để sheet 3 tra dòng ✓)
+  results.forEach((r, ti) => {
     const g = r.input || {}, req = r.req || {}, m = r.meta || {};
     const head = [r.stt ?? "", r.tuyen ?? "", r.roadClass ?? "", srcLbl(r.classSource), m.loaituyen || "",
       r1(g.spacing), r1(g.width), g.lanes ?? "", r1(g.H), r2(g.overhang), r2(g.setback), r0(g.tilt), arrLbl(g.arrangement),
@@ -135,10 +140,31 @@ export async function buildResultWorkbook(ExcelJS, { results, rows = [], q0 = 0.
       row.getCell(1).border = { ...BORDER, top: { style: "medium", color: { argb: C.head } } };
       return;
     }
+    const a = ws.rowCount + 1, b = a + opts.length - 1;
+    groupOf[ti] = { a, b };
+    const scored = opts[0].d_Ltb != null; // chế độ Từng phương án: app không chấm điểm → để trống
+    const rg = (c) => `$${c}$${a}:$${c}$${b}`, P = (n) => `AC${n}<>"ĐẠT"`;
     opts.forEach((o, k) => {
+      const n = a + k;
+      // So Đạt trên giá trị làm tròn như engine (2 chữ số; TI số nguyên); YC ở dòng đầu nhóm
+      const kq = F(`IF(AND(ROUND(W${n},2)>=$N$${a},ROUND(X${n},2)>=$O$${a},ROUND(Y${n},2)>=$P$${a},ROUND(Z${n},0)<=$Q$${a},ROUND(AA${n},2)>=$R$${a}),"ĐẠT","KHÔNG ĐẠT")`, o.pass ? "ĐẠT" : "KHÔNG ĐẠT");
+      // Borda: SUMPRODUCT so số trực tiếp (COUNTIFS "<="&ô đổi số thành chuỗi 15 chữ số → lệch điểm)
+      const borda = (c, op, v) => F(`IF(${P(n)},"",SUMPRODUCT((${rg("AC")}="ĐẠT")*(${rg(c)}${op}${c}${n})))`, v);
+      const beats = `((${rg("W")}<W${n})+(${rg("X")}<X${n})+(${rg("Y")}<Y${n})+(${rg("AA")}<AA${n})+(${rg("Z")}>Z${n}))>=3`;
+      const eqU = `(${rg("U")}=U${n})`, eqT1 = `(${rg("AI")}=AI${n})`;
+      // hoà tuyệt đối với dòng phía trên → xếp sau (dải con a..n-1; không dùng ROW(dải) vì không phải nơi nào cũng trả mảng)
+      const up = (c) => `$${c}$${a}:$${c}$${n - 1}`;
+      const tieAbove = (n) => n === a ? "" : `+SUMPRODUCT((${up("AC")}="ĐẠT")*(${up("U")}=U${n})*(${up("AI")}=AI${n})*(${up("AJ")}=AJ${n})*(${up("W")}=W${n}))`;
+      const score = scored ? [
+        borda("W", "<=", o.d_Ltb), borda("X", "<=", o.d_Uo), borda("Y", "<=", o.d_Ul), borda("Z", ">=", o.d_TI), borda("AA", "<=", o.d_SR),
+        F(`IF(${P(n)},"",SUM(AD${n}:AH${n}))`, o.tong1),
+        F(`IF(${P(n)},"",IF(AND(AI${n}=MAX(${rg("AI")}),COUNTIF(${rg("AI")},AI${n})>1),SUMPRODUCT(${eqT1}*(${beats})),0))`, o.tong2),
+        // Hạng: CS nhỏ hơn → Tổng 1, Tổng 2 cao hơn (= điểm xét) → Ltb cao hơn → dòng trên (như sort ổn định của app)
+        F(`IF(${P(n)},"",1+SUMPRODUCT((${rg("AC")}="ĐẠT")*((${rg("U")}<U${n})+${eqU}*(${rg("AI")}>AI${n})+${eqU}*${eqT1}*(${rg("AJ")}>AJ${n})+${eqU}*${eqT1}*(${rg("AJ")}=AJ${n})*(${rg("W")}>W${n})))${tieAbove(n)})`, o.rank),
+        F(`IF(AK${n}=1,"✓","")`, o.chosen ? "✓" : ""),
+      ] : [null, null, null, null, null, null, null, F(`IF(AC${n}="ĐẠT",1,"")`, o.rank), F(`IF(AC${n}="ĐẠT","✓","")`, o.chosen ? "✓" : "")];
       const row = ws.addRow([...(k === 0 ? head : blank), o.manufac || "", o.model || cleanIes(o.iesName), o.power ?? null, cleanIes(o.iesName),
-        r2(o.Ltb), r2(o.Uo), r2(o.Ul), r0(o.TI), r2(o.SR), r1(o.En), o.pass ? "ĐẠT" : "KHÔNG ĐẠT",
-        o.d_Ltb, o.d_Uo, o.d_Ul, o.d_TI, o.d_SR, o.tong1, o.tong2, o.rank, o.chosen ? "✓" : ""]);
+        raw(o.Ltb), raw(o.Uo), raw(o.Ul), raw(o.TI), raw(o.SR), raw(o.En), kq, ...score]);
       styleBody(row, zebra); mark(row.getCell(29), o.pass);
       if (o.chosen) { row.eachCell({ includeEmpty: true }, (c) => { c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: C.chosen } }; }); row.getCell(20).font = { bold: true, size: 10 }; row.getCell(38).font = { bold: true, size: 11, color: { argb: C.okTxt } }; row.getCell(38).alignment = { horizontal: "center" }; mark(row.getCell(29), true); }
       if (k === 0) row.eachCell({ includeEmpty: true }, (c) => { c.border = { ...c.border, top: { style: "medium", color: { argb: C.head } } }; });
@@ -158,13 +184,21 @@ export async function buildResultWorkbook(ExcelJS, { results, rows = [], q0 = 0.
   ws2.getRow(3).height = 6; styleHeader(ws2.addRow(H2));
   [6, 22, 36, 14, 10, 12, 18, 70].forEach((w, i) => { ws2.getColumn(i + 1).width = w; });
   let tR = 0, tL = 0, tK = 0, anyUnknown = false;
+  // Đếm/cộng trên sheet 3 theo (Hãng, Loại, CS) bằng SUMPRODUCT so bằng — COUNTIFS coi * ? ~ trong tên đèn
+  // là ký tự đại diện. Hãng "—" (không rõ) ứng với ô trống ở sheet 3.
+  const s3 = (c) => `'Theo tuyến'!$${c}$5:$${c}$${4 + results.length}`;
   sum.forEach((g, i) => {
-    const row = ws2.addRow([i + 1, g.manufac, g.model, g.power, g.routes, g.lampsKnown ? g.lamps : (g.lamps || null), g.lampsKnown ? r2(g.kW) : (g.kW ? r2(g.kW) : null), g.tuyen.join("; ")]);
+    const n = 5 + i;
+    const crit = `(${s3("J")}=${g.manufac === "—" ? '""' : `B${n}`})*(${s3("I")}=C${n})*(${s3("K")}=D${n})`;
+    const lamps = `SUMPRODUCT(${crit}*${s3("L")})`;
+    const row = ws2.addRow([i + 1, g.manufac, g.model, g.power, F(`SUMPRODUCT(${crit})`, g.routes),
+      F(`IF(${lamps}=0,"",${lamps})`, g.lamps || ""), F(`IF(${lamps}=0,"",${lamps}*D${n}/1000)`, g.kW || ""), g.tuyen.join("; ")]);
     styleBody(row, i % 2 === 1); row.getCell(7).numFmt = "0.00"; [1, 4, 5, 6].forEach((c) => { row.getCell(c).alignment = { horizontal: "center", vertical: "middle" }; });
     row.getCell(8).alignment = { wrapText: true, vertical: "middle" };
     tR += g.routes; tL += g.lamps; tK += g.kW; if (!g.lampsKnown) anyUnknown = true;
   });
-  const tot = ws2.addRow(["", "TỔNG CỘNG", "", "", tR, tL || null, r2(tK) || null, ""]);
+  const e2 = 4 + sum.length, sm = (c) => `SUM(${c}5:${c}${e2})`;
+  const tot = ws2.addRow(["", "TỔNG CỘNG", "", "", F(sm("E"), tR), F(`IF(${sm("F")}=0,"",${sm("F")})`, tL || ""), F(`IF(${sm("G")}=0,"",${sm("G")})`, tK || ""), ""]);
   tot.eachCell({ includeEmpty: true }, (c) => { c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: C.total } }; c.font = { bold: true, size: 10.5 }; c.border = BORDER; });
   tot.getCell(7).numFmt = "0.00"; [5, 6].forEach((c) => { tot.getCell(c).alignment = { horizontal: "center" }; });
   const note = ws2.addRow([]); const nc = ws2.getCell(note.number, 1); ws2.mergeCells(note.number, 1, note.number, H2.length);
@@ -180,12 +214,17 @@ export async function buildResultWorkbook(ExcelJS, { results, rows = [], q0 = 0.
   [6, 30, 9, 18, 10, 9, 9, 16, 32, 18, 10, 10, 8, 7, 7, 8, 7, 9, 14].forEach((w, i) => { ws3.getColumn(i + 1).width = w; });
   results.forEach((r, i) => {
     const g = r.input || {}, m = r.meta || {}, o = r.chosen, { n } = estimateLampCount(rows[i], g);
+    const gr = groupOf[i];
+    // Có dòng ở sheet 1: bộ đèn & chỉ tiêu lấy theo dòng ✓ của nhóm (đổi theo khi sửa số trong Excel)
+    const at = (c) => gr && `INDEX('Chấm điểm chi tiết'!$${c}$${gr.a}:$${c}$${gr.b},MATCH("✓",'Chấm điểm chi tiết'!$AL$${gr.a}:$AL$${gr.b},0))`;
+    const pick = (c, v) => gr ? F(`IFERROR(IF(${at(c)}="","",${at(c)}),"")`, v ?? "") : (v ?? null); // ô trống không hiện thành 0
+    const kq = r.status !== "ok" ? r.status : gr ? F(`IF(COUNTIF('Chấm điểm chi tiết'!$AL$${gr.a}:$AL$${gr.b},"✓")>0,"ĐẠT","KHÔNG ĐẠT")`, o ? "ĐẠT" : "KHÔNG ĐẠT") : (o ? "ĐẠT" : "KHÔNG ĐẠT");
     const row = ws3.addRow([r.stt ?? "", r.tuyen ?? "", r.roadClass ?? "", m.loaituyen || "", r1(g.spacing), r1(g.width), r1(g.H), arrLbl(g.arrangement),
-      o ? (o.model || cleanIes(o.iesName)) : "", o ? (o.manufac || "") : "", o ? o.power : null, n,
-      o ? r2(o.Ltb) : null, o ? r2(o.Uo) : null, o ? r2(o.Ul) : null, o ? r0(o.TI) : null, o ? r2(o.SR) : null, o ? r1(o.En) : null,
-      r.status !== "ok" ? r.status : (o ? "ĐẠT" : "KHÔNG ĐẠT")]);
+      pick("T", o ? (o.model || cleanIes(o.iesName)) : ""), pick("S", o ? (o.manufac || "") : ""), pick("U", o ? o.power : null), n,
+      pick("W", o ? raw(o.Ltb) : null), pick("X", o ? raw(o.Uo) : null), pick("Y", o ? raw(o.Ul) : null), pick("Z", o ? raw(o.TI) : null), pick("AA", o ? raw(o.SR) : null), pick("AB", o ? raw(o.En) : null),
+      kq]);
     styleBody(row, i % 2 === 1); mark(row.getCell(19), !!o && r.status === "ok");
-    [13, 14, 15, 17].forEach((c) => { row.getCell(c).numFmt = "0.00"; }); row.getCell(18).numFmt = "0.0";
+    [13, 14, 15, 17].forEach((c) => { row.getCell(c).numFmt = "0.00"; }); row.getCell(18).numFmt = "0.0"; row.getCell(16).numFmt = "0";
     [1, 3, 11, 12, 16].forEach((c) => { row.getCell(c).alignment = { horizontal: "center", vertical: "middle" }; });
   });
   ws3.autoFilter = { from: { row: 4, column: 1 }, to: { row: 4, column: H3.length } };
