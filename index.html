@@ -182,25 +182,41 @@ a{color:var(--accent)}
       <li>Bấm <b>📁 Chọn thư mục IES</b> → chọn thư mục chứa .ies.</li>
       <li>Chỉnh <b>MF</b> (hệ số bảo trì, mặc định 0,8), <b>Mặt đường (q0)</b> và <b>Chế độ</b> nếu cần. <b>q0</b> là hệ số độ chói trung bình của mặt đường (CIE R3): mặc định <b>0,08</b> (Tarmac theo DIALux); chọn 0,07 nếu dùng R3 chuẩn CIE. Độ chói Ltb tỉ lệ thuận với q0.</li>
       <li>Bấm <b>▶ Chạy</b> → xem bảng kết quả + thẻ tổng hợp (Đạt / Không đạt / Thiếu IES). Lọc hoặc gõ tên tuyến để tìm.</li>
-      <li>Bấm <b>⬇️ Tải file kết quả</b> để tải file Excel kết quả mới (Ltb/Uo/Ul/TI/SR + Đạt). File gốc giữ nguyên.</li>
-      <li>Bấm <b>📑 Xuất PDF</b> để xuất báo cáo kiểu DIALux (các tuyến đang lọc, 1 trang/tuyến).</li>
+      <li>Bấm <b>⬇️ Tải file kết quả</b> → tải về file Excel <b>mới</b> gồm 3 sheet (xem mục 4). File dữ liệu gốc không bị thay đổi.</li>
+      <li>Bấm <b>📑 Xuất PDF</b> → báo cáo kiểu DIALux cho các tuyến đang lọc (4 trang/tuyến, xem mục 5).</li>
     </ol>
 
     <h3>3. Hai chế độ tính</h3>
     <ul>
       <li><b>Đa phương án (chấm điểm &amp; chọn tối ưu)</b> — mặc định: với mỗi tuyến, app tính <b>tất cả bộ đèn trong thư mục IES</b> (nhiều hãng), liệt kê mỗi bộ một dòng, chấm điểm (Borda theo Ltb/Uo/Ul/TI/SR, tổng điểm lần 1 &amp; 2) và <b>đánh dấu ✓ đèn tối ưu</b> = công suất nhỏ nhất vẫn Đạt. Nếu dòng có ghi sẵn Loại đèn thì chỉ xét các bộ cùng model đó. Tải file kết quả ra bảng chấm điểm nhiều dòng/tuyến đủ cột (YC, điểm, hạng, chọn) — file mới, không ghi lên file gốc.</li>
-      <li><b>Từng phương án (1 đèn/dòng)</b>: chỉ tính đúng bộ đèn trên mỗi dòng (hoặc tự chọn nếu dòng để trống Loại đèn) — mỗi dòng 1 kết quả.</li>
+      <li><b>Từng phương án (1 đèn/dòng)</b>: chỉ tính đúng bộ đèn trên mỗi dòng (hoặc tự chọn nếu dòng để trống Loại đèn) — mỗi dòng 1 kết quả. File kết quả vẫn có đủ 3 sheet; mỗi tuyến 1 dòng đèn.</li>
     </ul>
 
-    <h3>4. Ghi file &amp; lưu ý</h3>
+    <h3>4. File Excel kết quả</h3>
     <ul>
-      <li>Kết quả luôn tải về dạng <b>file mới</b>: <code>WebDialux_KetQua_&lt;tên file dữ liệu&gt;_&lt;YYYYMMDD-HHMM&gt;.xlsx</code>, PDF: <code>WebDialux_BaoCao_&lt;tuyến&gt;_&lt;YYYYMMDD-HHMM&gt;.pdf</code>; file Excel gốc không bị thay đổi.</li>
-      <li>Trong khung xem trước có thể bị chặn tải — mở app ở <code>neo-era.github.io/webdialux-cs/</code> hoặc local là ghi/tải mượt.</li>
+      <li><b>Tên file</b>: <code>WebDialux_KetQua_ChamDiem_&lt;tên file dữ liệu&gt;_&lt;YYYYMMDD-HHMM&gt;.xlsx</code> (đa phương án) hoặc <code>WebDialux_KetQua_…</code> (từng phương án). Luôn là <b>file mới</b> tải về thư mục Downloads; file Excel gốc không bị ghi đè.</li>
+      <li><b>Sheet "Chấm điểm chi tiết"</b>: mỗi tuyến nhiều dòng — một dòng cho mỗi bộ đèn <b>Đạt</b> (các bộ không đạt được loại bỏ). Cột: thông số tuyến &amp; lắp đặt, yêu cầu QCVN (≥/≤), hãng · loại · công suất · file IES, kết quả Ltb/Uo/Ul/TI/SR/En, điểm Borda từng chỉ tiêu, tổng điểm lần 1 &amp; 2, hạng, dấu ✓ bộ đèn chọn (tô xanh). Có cố định tiêu đề + bộ lọc.</li>
+      <li><b>Sheet "Tổng hợp đèn"</b>: gộp bộ đèn được chọn theo <b>Nhà sản xuất · Loại đèn · Công suất</b> → số tuyến, số bộ đèn, tổng kW, danh sách tuyến; dòng TỔNG CỘNG. Số bộ đèn lấy theo cột <code>SL đèn trình Sở (bộ)</code> nếu có, nếu không ước tính ⌈Chiều dài tuyến / Khoảng cột⌉ × số hàng đèn.</li>
+      <li><b>Sheet "Theo tuyến"</b>: 1 dòng/tuyến với bộ đèn chọn, chỉ tiêu và kết luận ĐẠT / KHÔNG ĐẠT — tiện dán vào hồ sơ.</li>
+      <li>Tiêu đề file ghi dự án, ngày xuất, MF, q0 và phiên bản app để truy vết.</li>
+    </ul>
+
+    <h3>5. Báo cáo PDF</h3>
+    <ul>
+      <li><b>Tên file</b>: <code>WebDialux_BaoCao_&lt;tên tuyến&gt;_&lt;YYYYMMDD-HHMM&gt;.pdf</code> (1 tuyến) hoặc <code>WebDialux_BaoCao_&lt;N&gt;_tuyen_…pdf</code> (nhiều tuyến). Chỉ xuất các tuyến đang hiển thị theo bộ lọc.</li>
+      <li>Mỗi tuyến 4 trang theo bố cục DIALux: phối cảnh 3D ban đêm từ lưới E thực tính (màu theo CCT), mặt bằng bố trí; thông số bộ đèn đầy đủ + biểu đồ phân bố cường độ (Polar LDC); thông số lắp đặt + Imax 70/80/90°; bảng đánh giá Ký hiệu / Tính toán / Yêu cầu / Kiểm tra; chỉ số năng lượng (W/km, Dp, De, kWh/năm); bản đồ false-color độ rọi; lưới giá trị E; kết quả &amp; lưới độ chói theo từng observer.</li>
+      <li>Chân trang ghi phiên bản app và số trang. Không dùng logo/thương hiệu DIALux — chỉ tham chiếu bố cục.</li>
+    </ul>
+
+    <h3>6. Lưu ý</h3>
+    <ul>
+      <li>Trong khung xem trước có thể bị chặn tải — mở app ở <code>neo-era.github.io/webdialux-cs/</code> hoặc local là tải mượt.</li>
+      <li>Phiên bản app hiển thị cạnh tên (badge) và trong menu; mỗi bản cập nhật tăng 0,1. Nếu không thấy bản mới, nhấn <b>Ctrl+F5</b>.</li>
       <li>Dòng "Thiếu IES" = chưa có file .ies khớp model+công suất → bổ sung vào thư mục IES.</li>
       <li><b>Độ chói</b> dùng bảng R3 CIE (khớp DIALux cho Ltb &amp; Uo). <b>TI</b> là ước tính, thiên an toàn — dùng tham khảo.</li>
     </ul>
 
-    <h3>5. Ngưỡng cấp đường (QCVN 07-7:2023)</h3>
+    <h3>7. Ngưỡng cấp đường (QCVN 07-7:2023)</h3>
     <table>
       <tr><th>Cấp</th><th>Ltb (cd/m²)</th><th>Uo</th><th>Ul</th><th>TI (%)</th><th>SR</th></tr>
       <tr><td>A</td><td>≥ 2,0</td><td>≥ 0,4</td><td>≥ 0,7</td><td>≤ 10</td><td>≥ 0,5</td></tr>
