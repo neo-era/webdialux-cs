@@ -197,6 +197,108 @@ export function planDataURL(d, doc = globalThis.document) {
   return cv.toDataURL("image/png");
 }
 
+/**
+ * Mô phỏng 3D phối cảnh ban đêm (perspective) của tuyến -> dataURL.
+ * Độ sáng vũng đèn tỉ lệ theo độ rọi trung bình Eav đã tính (mô phỏng thật).
+ */
+export function perspective3DDataURL(d, result, doc = globalThis.document) {
+  const I = d.install, W = I.width || 7, S = I.spacing || 30, H = I.H || 9, ov = I.overhang || 0;
+  const Eav = (result && result.E && result.E.avg) || 15;
+  const two = /đối xứng|doi xung|so le|staggered|opposite/i.test(I.arrangement || "");
+  const stag = /so le|staggered/i.test(I.arrangement || "");
+  const CW = 840, CH = 400, xNear = 12;
+  const cv = doc.createElement("canvas"); cv.width = CW; cv.height = CH;
+  const ctx = cv.getContext("2d");
+  // --- camera / phép chiếu pinhole ---
+  const cx = CW / 2, horizonY = CH * 0.40, f = 620, hCam = 1.7, d0 = 10;
+  const proj = (x, yLat, z = 0) => ({ sx: cx + f * yLat / (x + d0), sy: horizonY + f * (hCam - z) / (x + d0), s: f / (x + d0) });
+
+  // --- bầu trời đêm ---
+  const sky = ctx.createLinearGradient(0, 0, 0, horizonY);
+  sky.addColorStop(0, "#070d1c"); sky.addColorStop(0.7, "#132138"); sky.addColorStop(1, "#2a3b52");
+  ctx.fillStyle = sky; ctx.fillRect(0, 0, CW, horizonY);
+  // ráng sáng chân trời
+  const glow = ctx.createLinearGradient(0, horizonY - 40, 0, horizonY);
+  glow.addColorStop(0, "rgba(255,210,150,0)"); glow.addColorStop(1, "rgba(255,196,120,0.18)");
+  ctx.fillStyle = glow; ctx.fillRect(0, horizonY - 40, CW, 40);
+  // sao
+  ctx.fillStyle = "rgba(255,255,255,0.7)";
+  for (let i = 0; i < 70; i++) { const rx = (i * 137.5) % CW, ry = (i * 61.7) % (horizonY - 20); ctx.globalAlpha = 0.3 + ((i * 7) % 10) / 14; ctx.fillRect(rx, ry, 1.4, 1.4); }
+  ctx.globalAlpha = 1;
+  // mặt đất nền tối
+  ctx.fillStyle = "#0e1014"; ctx.fillRect(0, horizonY, CW, CH - horizonY);
+
+  // --- mặt đường (hình thang phối cảnh) ---
+  const Xfar = 200;
+  const eL0 = proj(0, -W / 2), eR0 = proj(0, W / 2), eLf = proj(Xfar, -W / 2), eRf = proj(Xfar, W / 2);
+  ctx.beginPath(); ctx.moveTo(eL0.sx, eL0.sy); ctx.lineTo(eR0.sx, eR0.sy); ctx.lineTo(eRf.sx, eRf.sy); ctx.lineTo(eLf.sx, eLf.sy); ctx.closePath();
+  const road = ctx.createLinearGradient(0, horizonY, 0, CH);
+  road.addColorStop(0, "#2b2f35"); road.addColorStop(0.6, "#3f444c"); road.addColorStop(1, "#4d535c");
+  ctx.fillStyle = road; ctx.fill();
+  // mép đường trắng
+  ctx.strokeStyle = "rgba(235,238,243,0.85)"; ctx.lineWidth = 1;
+  for (const s of [-1, 1]) {
+    ctx.beginPath(); const a = proj(0, s * W / 2), b = proj(Xfar, s * W / 2);
+    ctx.moveTo(a.sx, a.sy); ctx.lineTo(b.sx, b.sy); ctx.lineWidth = Math.max(0.6, a.s * 0.12); ctx.stroke();
+  }
+  // vạch tim/làn đứt
+  const lanes = I.lanes || 2;
+  for (let l = 1; l < lanes; l++) {
+    const yl = -W / 2 + W * l / lanes;
+    for (let x = 2; x < Xfar; x += 8) {
+      const p1 = proj(x, yl), p2 = proj(x + 4, yl);
+      ctx.strokeStyle = "rgba(220,225,232,0.7)"; ctx.lineWidth = Math.max(0.5, p1.s * 0.1);
+      ctx.beginPath(); ctx.moveTo(p1.sx, p1.sy); ctx.lineTo(p2.sx, p2.sy); ctx.stroke();
+    }
+  }
+
+  // --- vũng sáng + trụ đèn ---
+  const bright = Math.max(0.2, Math.min(1, Eav / 35)); // độ sáng theo Eav
+  const poles = [];
+  for (let k = 0; k <= Math.floor(Xfar / S) + 1; k++) {
+    poles.push({ x: k * S, yLat: ov - W / 2, side: -1 });
+    if (two) poles.push({ x: k * S + (stag ? S / 2 : 0), yLat: W / 2 - ov, side: 1 });
+  }
+  poles.sort((a, b) => b.x - a.x); // xa vẽ trước
+  // vũng sáng trên mặt đường (radial gradient ấm)
+  for (const p of poles) {
+    if (p.x < xNear || p.x > 150) continue;
+    const g = proj(p.x, 0);
+    const rW = H * 1.3; let r = rW * g.s; if (r < 2) continue; r = Math.min(r, 135);
+    const cxp = proj(p.x, p.yLat * 0.25).sx;
+    const grd = ctx.createRadialGradient(cxp, g.sy, 1, cxp, g.sy, r);
+    grd.addColorStop(0, `rgba(255,224,168,${0.22 * bright})`);
+    grd.addColorStop(0.55, `rgba(255,205,130,${0.10 * bright})`);
+    grd.addColorStop(1, "rgba(255,198,118,0)");
+    ctx.save(); ctx.globalCompositeOperation = "lighter";
+    ctx.beginPath(); ctx.ellipse(proj(p.x, p.yLat * 0.3).sx, g.sy, r, r * 0.42, 0, 0, 2 * Math.PI); ctx.fillStyle = grd; ctx.fill();
+    ctx.restore();
+  }
+  // trụ + cần + đèn sáng
+  for (const p of poles) {
+    if (p.x < xNear) continue;
+    const base = proj(p.x, p.yLat, 0), top = proj(p.x, p.yLat, H);
+    if (base.s < 0.12) continue;
+    ctx.strokeStyle = "#0e1116"; ctx.lineWidth = Math.max(0.8, base.s * 0.5);
+    ctx.beginPath(); ctx.moveTo(base.sx, base.sy); ctx.lineTo(top.sx, top.sy); ctx.stroke();
+    // cần vươn vào tim đường
+    const lamp = proj(p.x, p.yLat - p.side * (I.boomLength || 1.5) * 0.6, H);
+    ctx.beginPath(); ctx.moveTo(top.sx, top.sy); ctx.lineTo(lamp.sx, lamp.sy); ctx.stroke();
+    // bóng đèn sáng (quầng vừa phải, tránh cháy sáng)
+    const lr = Math.max(1.2, Math.min(5, base.s * 0.7));
+    const lg = ctx.createRadialGradient(lamp.sx, lamp.sy, 0, lamp.sx, lamp.sy, lr * 2.4);
+    lg.addColorStop(0, "rgba(255,244,210,0.75)"); lg.addColorStop(0.45, "rgba(255,222,150,0.3)"); lg.addColorStop(1, "rgba(255,210,120,0)");
+    ctx.save(); ctx.globalCompositeOperation = "lighter"; ctx.fillStyle = lg;
+    ctx.beginPath(); ctx.arc(lamp.sx, lamp.sy, lr * 2.4, 0, 2 * Math.PI); ctx.fill(); ctx.restore();
+    ctx.fillStyle = "#fff4d6"; ctx.beginPath(); ctx.arc(lamp.sx, lamp.sy, lr * 0.8, 0, 2 * Math.PI); ctx.fill();
+  }
+  // vignette
+  const vg = ctx.createRadialGradient(cx, CH * 0.6, CH * 0.3, cx, CH * 0.6, CH * 0.9);
+  vg.addColorStop(0, "rgba(0,0,0,0)"); vg.addColorStop(1, "rgba(0,0,0,0.38)");
+  ctx.fillStyle = vg; ctx.fillRect(0, 0, CW, CH);
+  return cv.toDataURL("image/png");
+}
+
 /** Sơ đồ cần đèn với nhãn (1)-(4) -> dataURL. */
 export function armDataURL(d, doc = globalThis.document) {
   const I = d.install;
@@ -275,7 +377,20 @@ export function renderRoadPage(doc, { input, result, ph, meta, makeIntensity }) 
   doc.text(`Cấp đường: ${clsLbl}        Kết luận: ${d.pass ? "ĐẠT" : "KHÔNG ĐẠT"}`, M, y);
   doc.setTextColor(30, 30, 40); y += 8;
 
+  // Mô phỏng 3D ban đêm (phối cảnh)
+  doc.setFontSize(10.5); doc.text("Mô phỏng chiếu sáng ban đêm (phối cảnh 3D)", M, y); y += 3;
+  try {
+    const p3 = perspective3DDataURL(d, result, globalThis.document);
+    const pw3 = 182, ph3 = pw3 * 440 / 840;
+    doc.addImage(p3, "PNG", M, y, pw3, ph3);
+    doc.setFontSize(7.4); doc.setTextColor(120, 130, 145);
+    doc.text("Phối cảnh minh hoạ — độ sáng vũng đèn theo độ rọi trung bình Eav = " + vn(result.E.avg, 1) + " lx.", M, y + ph3 + 3.5);
+    doc.setTextColor(30, 30, 40);
+    y += ph3 + 7;
+  } catch (_) { y += 2; }
+
   // Mặt bằng bố trí
+  if (y + 78 > 284) { doc.addPage(); y = 16; }
   doc.setFontSize(10.5); doc.text("Mặt bằng bố trí", M, y); y += 3;
   try {
     const plan = planDataURL(d, globalThis.document);
@@ -285,6 +400,7 @@ export function renderRoadPage(doc, { input, result, ph, meta, makeIntensity }) 
   } catch (_) { y += 2; }
 
   // Thông số bộ đèn + Polar LDC
+  if (y + 72 > 284) { doc.addPage(); y = 16; }
   doc.setFontSize(10.5); doc.text("Thông số bộ đèn", M, y); y += 2;
   const L = d.luminaire;
   const yAfter = drawTable(doc, M, y, [36, 64], [
@@ -309,29 +425,42 @@ export function renderRoadPage(doc, { input, result, ph, meta, makeIntensity }) 
   } catch (_) {}
   y = Math.max(yAfter, y + 62) + 4;
 
-  // Lắp đặt + cường độ + hình cần đèn
+  // Thông số lắp đặt (bố cục kiểu DIALux: toàn chiều rộng) + Imax + hình cần đèn
   const I = d.install, en = d.energy;
   const i70 = maxIntensityPerKlm(ph, makeIntensity, 70);
   const i80 = maxIntensityPerKlm(ph, makeIntensity, 80);
   const i90 = maxIntensityPerKlm(ph, makeIntensity, 90);
-  if (y + 46 > 282) { doc.addPage(); y = 16; }
-  doc.setFontSize(10.5); doc.text("Thông số lắp đặt", M, y); y += 2;
-  const yI = drawTable(doc, M, y, [46, 32, 34, 20], [
-    ["Khoảng cột", vn(I.spacing, 1) + " m", "Bề rộng", vn(I.width, 1) + " m"],
-    ["(1) Độ cao H", vn(I.H, 1) + " m", "Số làn", String(I.lanes)],
-    ["(2) Vươn điểm sáng", vn(I.overhang, 2) + " m", "Bố trí", I.arrangement],
-    ["(3) Góc nghiêng", vn(I.tilt, 0) + "°", "(4) Cần", vn(I.boomLength, 2) + " m"],
-    ["Trụ→mép (setback)", vn(I.setback, 2) + " m", "MF", vn(I.MF, 2)],
-    ["Tiêu thụ", vn(en.Wkm, 0) + " W/km", "ULR/ULOR", "0,00/0,00"],
-  ], { rh: 6.3, fs: 8.3 });
-  try { doc.addImage(armDataURL(d, globalThis.document), "PNG", M + 132, y - 1, 50, 40); } catch (_) {}
-  const yJ = drawTable(doc, M + 132, y + 41, [28, 22], [
-    [{ t: "Cường độ max", c: [90, 100, 120] }, { t: "cd/klm", a: "right" }],
-    ["≥ 70°", vn(i70, 0)], ["≥ 80°", vn(i80, 0)], ["≥ 90°", vn(i90, 1)],
-  ], { rh: 5.6, fs: 7.6 });
-  y = Math.max(yI, yJ) + 3.5;
+  const arrText = /đối xứng|doi xung/i.test(I.arrangement) ? "hai bên đối diện"
+    : /so le|staggered/i.test(I.arrangement) ? "hai bên so le"
+    : /giữa/i.test(I.arrangement) ? "trên dải phân cách" : "một bên";
+  if (y + 70 > 284) { doc.addPage(); y = 16; }
+  doc.setFontSize(9.6); doc.setTextColor(40, 46, 58);
+  doc.text(L.iesName.replace(/_IESNA2002$/i, "") + "  (" + arrText + ")", M, y); y += 3;
+  doc.setTextColor(30, 30, 40);
+  const Lcol = 70, Vcol = 62;
+  const yI = drawTable(doc, M, y, [Lcol, Vcol], [
+    ["Khoảng cột (pole distance)", vn(I.spacing, 1) + " m"],
+    ["(1) Độ cao điểm sáng", vn(I.H, 1) + " m"],
+    ["(2) Vươn điểm sáng", vn(I.overhang, 2) + " m"],
+    ["(3) Góc nghiêng cần", vn(I.tilt, 0) + "°"],
+    ["(4) Chiều dài cần", vn(I.boomLength, 2) + " m"],
+    ["Trụ → mép đường (setback)", vn(I.setback, 2) + " m"],
+    ["Tiêu thụ / tuyến", vn(en.Wkm, 0) + " W/km"],
+    ["ULR / ULOR", "0,00 / 0,00"],
+    [{ t: "Cường độ sáng max ≥ 70°", c: [40, 46, 58] }, vn(i70, 0) + " cd/klm"],
+    ["Cường độ sáng max ≥ 80°", vn(i80, 0) + " cd/klm"],
+    ["Cường độ sáng max ≥ 90°", vn(i90, 1) + " cd/klm"],
+    ["Phân cấp cường độ sáng", "–"],
+    ["Hệ số bảo trì MF", vn(I.MF, 2)],
+  ], { rh: 6.0, fs: 8.3 });
+  try { doc.addImage(armDataURL(d, globalThis.document), "PNG", M + Lcol + Vcol + 6, y - 1, 48, 38); } catch (_) {}
+  doc.setFontSize(7.2); doc.setTextColor(120, 130, 145);
+  doc.text("Imax: cường độ lớn nhất ở góc nêu (so với phương", M + Lcol + Vcol + 6, y + 42);
+  doc.text("thẳng đứng), quy về cd trên 1000 lm quang thông.", M + Lcol + Vcol + 6, y + 46);
+  doc.setTextColor(30, 30, 40);
+  y = yI + 4;
   doc.setFontSize(7.8); doc.setTextColor(90, 100, 120);
-  doc.text("Mặt đường: " + I.surface + "   ·   File IES: " + L.iesName.replace(/_IESNA2002$/i, "") + (d.autoSelect ? "  (app tự chọn)" : ""), M, y);
+  doc.text("Mặt đường: " + I.surface + (d.autoSelect ? "   ·   bộ đèn do app tự chọn" : ""), M, y);
   doc.setTextColor(30, 30, 40); y += 6;
 
   // Bảng đánh giá
