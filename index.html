@@ -545,8 +545,25 @@ $("btnPdf").onclick = async () => {
     const MF=parseFloat($("mf").value)||0.8;
     const q0=parseFloat($("q0").value)||0.08;
     const byName=new Map(iesIndex.map(e=>[e.name,e]));
-    let doc=null, made=0;
+    // jsPDF dựng cả file thành 1 chuỗi → quá nhiều trang vượt giới hạn chuỗi của trình duyệt
+    // ("Invalid string length"). Chia thành nhiều file, mỗi file tối đa PDF_PER_FILE tuyến.
+    const PDF_PER_FILE=50;
+    const nParts=Math.ceil(idxs.length/PDF_PER_FILE);
+    let doc=null, made=0, inPart=0, part=0, firstIdx=null;
+    const flush=async()=>{
+      if(!doc) return;
+      part++;
+      finalizeDoc(doc); // chân trang © + Trang i/N cho mọi trang
+      const subject = made===1 ? (rows[firstIdx][COLS.tuyen]||"tuyen") : (nParts>1 ? `${idxs.length}_tuyen_phan${part}-${nParts}` : `${made}_tuyen`);
+      const blob = doc.output("blob");
+      doc=null; inPart=0;
+      const a=Object.assign(document.createElement("a"),{href:URL.createObjectURL(blob),download:outName("BaoCao", subject, "pdf")});
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(()=>URL.revokeObjectURL(a.href),60000);
+      await new Promise(r=>setTimeout(r,400));
+    };
     for(const i of idxs){
+      if(inPart>=PDF_PER_FILE) await flush();
       const row=rows[i]; const g=rowToGeometry(row); const res=results[i];
       // bộ đèn: ưu tiên bộ đã chọn/đã tính (ranked: chosen; each: iesName)
       const pickName = res && (res.chosen ? res.chosen.iesName : (res.iesName || ((res.options||[])[0]||{}).iesName));
@@ -564,15 +581,14 @@ $("btnPdf").onclick = async () => {
               cct:(row["CCT (K)"]??row["CCT"]??"")||null, cri:(row["CRI"]??"")||null,
               autoClass:res&&res.autoClass,autoSelect:autoSel,
               classSource:res&&res.classSource}});
-      made++;
+      if(firstIdx===null) firstIdx=i;
+      made++; inPart++;
+      if(made%10===0){ setStatus(`Đang tạo PDF ${made}/${idxs.length} tuyến…`); await new Promise(r=>setTimeout(r,0)); }
     }
-    if(!doc){ setStatus("Không tạo được trang PDF nào (thiếu IES khớp).",true); return; }
-    const name = made===1 ? outName("BaoCao", rows[idxs[0]][COLS.tuyen]||"tuyen", "pdf") : outName("BaoCao", `${made}_tuyen`, "pdf");
-    finalizeDoc(doc); // chân trang © + Trang i/N cho mọi trang
-    const blob = doc.output("blob");
-    const a=Object.assign(document.createElement("a"),{href:URL.createObjectURL(blob),download:name});
-    document.body.appendChild(a); a.click(); a.remove();
-    setStatus(`Đã tạo PDF ${made} tuyến để tải về (nếu trình duyệt trong khung chặn tải, chạy app trên GitHub Pages/local server).`);
+    if(made===0){ setStatus("Không tạo được trang PDF nào (thiếu IES khớp).",true); return; }
+    await flush();
+    const parts = part>1 ? ` thành ${part} file (tối đa ${PDF_PER_FILE} tuyến/file — nếu trình duyệt hỏi "tải nhiều file", chọn Cho phép)` : "";
+    setStatus(`Đã tạo PDF ${made} tuyến${parts} để tải về (nếu trình duyệt trong khung chặn tải, chạy app trên GitHub Pages/local server).`);
   }catch(e){ setStatus("Lỗi xuất PDF: "+e.message,true); }
 };
 
