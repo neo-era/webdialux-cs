@@ -1,2 +1,2 @@
 // Nguồn duy nhất của số phiên bản. Quy ước: MỖI LẦN PUSH lên GitHub tăng 0.1.
-export const VERSION = "v1.2";
+export const VERSION = "v1.3";

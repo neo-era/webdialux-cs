@@ -560,9 +560,10 @@ export function renderRoadPage(doc, { input, result, ph, meta, makeIntensity }) 
     doc.addImage(p3, "PNG", M, y, pw3, ph3);
     doc.setFontSize(7.4); doc.setTextColor(120, 130, 145);
     const cctTxt = (d.luminaire && d.luminaire.cct) ? d.luminaire.cct + " K" : "4000 K (mặc định, IES không ghi)";
-    doc.text(fitText(doc, "Mặt đường tô theo lưới độ rọi E đã tính (Emin " + vn(result.E.min, 1) + " – Emax " + vn(result.E.max, 1) + " lx); màu ánh sáng theo nhiệt độ màu CCT " + cctTxt + ".", 182), M, y + ph3 + 3.5);
+    const capLines = doc.splitTextToSize("Mặt đường tô theo lưới độ rọi E đã tính (Emin " + vn(result.E.min, 1) + " – Emax " + vn(result.E.max, 1) + " lx); màu ánh sáng theo nhiệt độ màu CCT " + cctTxt + ".", 182);
+    doc.text(capLines, M, y + ph3 + 3.5);
     doc.setTextColor(30, 30, 40);
-    y += ph3 + 10;
+    y += ph3 + 6.5 + capLines.length * 3.5;
   } catch (_) { y += 2; }
 
   // Mặt bằng bố trí
@@ -716,8 +717,9 @@ export function renderRoadPage(doc, { input, result, ph, meta, makeIntensity }) 
     y = drawTable(doc, M, y, [86, 36, 36, 24], rows, { header: true, rh: 6.2, fs: 8.3 }) + 3;
   });
   doc.setFontSize(7.4); doc.setTextColor(120, 130, 145);
-  doc.text(fitText(doc, "Observer đặt cách trường tính 60 m về phía trước, cao 1,5 m, trên tim từng làn (CIE 140). Kết quả mặt đường = trường hợp xấu nhất qua các observer.", 182), M, y);
-  doc.setTextColor(30, 30, 40); y += 6;
+  const obsLines = doc.splitTextToSize("Observer đặt cách trường tính 60 m về phía trước, cao 1,5 m, trên tim từng làn (CIE 140). Kết quả mặt đường = trường hợp xấu nhất qua các observer.", 182);
+  doc.text(obsLines, M, y);
+  doc.setTextColor(30, 30, 40); y += 2.5 + obsLines.length * 3.5;
 
   // #4 Lưới giá trị độ chói theo từng observer (khi engine chạy detail=true)
   result.observers.forEach((o, i) => {
