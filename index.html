@@ -382,6 +382,8 @@ async function saveRanked(){
     const n2=(x)=>x==null?"":+(+x).toFixed(2);
     const n0=(x)=>x==null?"":Math.round(x);
     const n1=(x)=>x==null?"":+(+x).toFixed(1);
+    const yge=(x)=>x==null?"":"≥ "+(+(+x).toFixed(2)); // tiêu chí tối thiểu
+    const yle=(x)=>x==null?"":"≤ "+Math.round(x);      // tiêu chí tối đa (TI)
     const HEAD=[
       "STT","Tuyến đường","Độ cao bộ đèn (m)","Độ vươn cần đèn (m)","Góc nghiêng (độ)",
       "Độ rộng lòng đường (m)","Khoảng cột (m)","Setback (m)","Cách bố trí","Dải phân cách","Số làn",
@@ -409,7 +411,7 @@ async function saveRanked(){
           head?n2(g.H):"", head?n2(g.overhang):"", head?n0(g.tilt):"",
           head?n2(g.width):"", head?n2(g.spacing):"", "", head?(g.arrangement||""):"", "", head?(g.lanes||""):"",
           head?(meta.loaituyen||""):"", head?(r.roadClass||""):"", head?srcLbl(r.classSource):"",
-          head?n2(req.Ltb):"", head?n2(req.Uo):"", head?n2(req.Ul):"", head?n0(req.TI):"", head?n2(req.SR):"",
+          head?yge(req.Ltb):"", head?yge(req.Uo):"", head?yge(req.Ul):"", head?yle(req.TI):"", head?yge(req.SR):"",
           o.model||"", o.manufac||"", o.power??"", cleanIes(o.iesName),
           n2(o.Ltb),n2(o.Uo),n2(o.Ul),n0(o.TI),n2(o.SR),n1(o.En),
           o.pass?"ĐẠT":"KHÔNG ĐẠT",
