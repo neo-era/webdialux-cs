@@ -89,7 +89,7 @@ export function rowToGeometry(row) {
 
   const overhang = vuon - setback; // net light-point so với mép gần
   return {
-    input: { H, overhang, spacing, width, lanes, tilt, arrangement, roadClass },
+    input: { H, overhang, spacing, width, lanes, tilt, arrangement, roadClass, vuon, setback },
     warnings: w, autoClass, classSource,
     meta: {
       stt: row[COLS.stt], tuyen: row[COLS.tuyen],

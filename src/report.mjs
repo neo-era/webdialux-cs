@@ -15,9 +15,15 @@ export function reportData(input, result, ph, meta = {}) {
     },
     install: {
       spacing: input.spacing, H: input.H, overhang: input.overhang, tilt: input.tilt,
+      boomLength: input.vuon ?? null, setback: input.setback ?? null,
       width: input.width, lanes: input.lanes, arrangement: input.arrangement, MF: input.MF ?? 0.8,
       surface: "CIE R3, q0 " + String(input.q0 ?? 0.07).replace(".", ","),
+      q0: input.q0 ?? 0.07,
     },
+    energy: energyIndicators({
+      P: ph.inputWatts, spacing: input.spacing, width: input.width,
+      Eav: result.E.avg, arrangement: input.arrangement,
+    }),
     checks: [
       checkRow("Lav (Ltb)", road.Lav, req.Ltb, c.Ltb, "cd/m²"),
       checkRow("Uo", road.Uo, req.Uo, c.Uo, ""),
@@ -28,6 +34,40 @@ export function reportData(input, result, ph, meta = {}) {
     pass: result.pass,
     illum: { Eav: result.E.avg, Emin: result.E.min, Emax: result.E.max, g1: result.E.g1, g2: result.E.g2 },
     observers: result.observers.map((o) => ({ y: o.pos.y, Lav: o.Lav, Uo: o.Uo, Ul: o.Ul, TI: o.TI })),
+  };
+}
+
+/**
+ * Cường độ sáng lớn nhất tại góc dọc γ (qua mọi mặt C), quy về cd/klm
+ * (chia cho quang thông bộ đèn / 1000). Dùng cho khối "Max. luminous intensities".
+ */
+export function maxIntensityPerKlm(ph, makeIntensity, gammaDeg) {
+  const I = makeIntensity(ph);
+  let imax = 0;
+  for (let c = 0; c < 360; c += 5) imax = Math.max(imax, I(c, gammaDeg));
+  const flux = ph.totalLumens || null;
+  return flux ? imax / (flux / 1000) : null; // cd/klm
+}
+
+/**
+ * Chỉ số năng lượng (theo quy ước DIALux):
+ *  - nSide: số hàng đèn (đối xứng/so le = 2; 1 bên/giữa = 1)
+ *  - Wkm   : công suất lắp đặt trên 1 km tuyến (W/km)
+ *  - Dp    : mật độ công suất trên độ rọi (W/lx·m²) = (nSide·P/(S·W)) / Eav
+ *  - De    : điện năng/m²/năm (kWh/m²·yr) = (nSide·P/(S·W))·giờ/1000
+ *  - annualKwh: điện năng/năm cho cụm đèn 1 nhịp (kWh/yr)
+ */
+export function energyIndicators({ P, spacing, width, Eav, arrangement, hours = 4000 }) {
+  const two = /đối xứng|doi xung|so le|staggered|two|opposite/i.test(arrangement || "");
+  const nSide = two ? 2 : 1;
+  if (!P || !spacing || !width) return { nSide, Wkm: null, Dp: null, De: null, annualKwh: null };
+  const perM2 = nSide * P / (spacing * width);  // W/m²
+  return {
+    nSide,
+    Wkm: nSide * (1000 / spacing) * P,
+    Dp: Eav ? perM2 / Eav : null,
+    De: perM2 * hours / 1000,
+    annualKwh: nSide * P * hours / 1000,
   };
 }
 
@@ -97,6 +137,86 @@ export function polarDataURL(ph, makeIntensity, doc = globalThis.document) {
   return cv.toDataURL("image/png");
 }
 
+/** Sơ đồ mặt bằng 1 nhịp (trụ, hướng xe, kích thước) -> dataURL. */
+export function planDataURL(d, doc = globalThis.document) {
+  const I = d.install, W = I.width || 7, S = I.spacing || 30, ov = I.overhang || 0;
+  const two = /đối xứng|doi xung|so le|staggered|opposite/i.test(I.arrangement || "");
+  const stag = /so le|staggered/i.test(I.arrangement || "");
+  const cv = doc.createElement("canvas"); cv.width = 760; cv.height = 360;
+  const ctx = cv.getContext("2d"); ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, cv.width, cv.height);
+  const mL = 70, mR = 40, mT = 40, mB = 56;
+  const pw = cv.width - mL - mR, ph2 = cv.height - mT - mB;
+  const X = (x) => mL + (x / S) * pw;              // dọc đường 0..S
+  const Y = (y) => mT + (y / W) * ph2;             // ngang đường 0..W (0 = mép gần/trên)
+  // nền lòng đường
+  ctx.fillStyle = "#f4f6f9"; ctx.fillRect(mL, mT, pw, ph2);
+  ctx.strokeStyle = "#9aa7b6"; ctx.lineWidth = 1.5; ctx.strokeRect(mL, mT, pw, ph2);
+  // vạch làn
+  const lanes = I.lanes || 2;
+  ctx.setLineDash([10, 8]); ctx.strokeStyle = "#c2ccd8";
+  for (let l = 1; l < lanes; l++) { const yy = Y(W * l / lanes); ctx.beginPath(); ctx.moveTo(mL, yy); ctx.lineTo(mL + pw, yy); ctx.stroke(); }
+  ctx.setLineDash([]);
+  // mũi tên hướng xe (giữa mỗi làn)
+  ctx.strokeStyle = "#5b6676"; ctx.fillStyle = "#5b6676"; ctx.lineWidth = 2;
+  for (let l = 0; l < lanes; l++) {
+    const yy = Y(W * (l + 0.5) / lanes); const x0 = mL + 14, x1 = mL + 54;
+    ctx.beginPath(); ctx.moveTo(x0, yy); ctx.lineTo(x1, yy); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(x1, yy); ctx.lineTo(x1 - 7, yy - 4); ctx.lineTo(x1 - 7, yy + 4); ctx.closePath(); ctx.fill();
+  }
+  // trụ + đèn: hàng gần tại y=overhang, hàng xa tại y=W-overhang
+  const pole = (xx, yy) => {
+    ctx.fillStyle = "#4b5563"; ctx.beginPath(); ctx.arc(xx, yy, 5, 0, 2 * Math.PI); ctx.fill();
+    ctx.strokeStyle = "#4b5563"; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(xx, yy); ctx.lineTo(xx, Y(ov) < yy ? Y(ov) - 14 : Y(ov) + 14); ctx.stroke();
+  };
+  const near = (k) => pole(X(k * S), Y(ov));
+  const far = (k, off = 0) => pole(X(k * S + off), Y(W - ov));
+  for (let k = 0; k <= 1; k++) { near(k); if (two) far(k, stag ? S / 2 : 0); }
+  if (stag) far(0, -S / 2);
+  // kích thước S (dưới) và W (phải)
+  ctx.strokeStyle = "#1f2937"; ctx.fillStyle = "#1f2937"; ctx.lineWidth = 1; ctx.font = "16px sans-serif";
+  const yb = mT + ph2 + 26;
+  ctx.beginPath(); ctx.moveTo(mL, yb); ctx.lineTo(mL + pw, yb); ctx.stroke();
+  ctx.textAlign = "center"; ctx.fillText(vn(S, 1) + " m", mL + pw / 2, yb + 18);
+  const xr = mL + pw + 20;
+  ctx.beginPath(); ctx.moveTo(xr, mT); ctx.lineTo(xr, mT + ph2); ctx.stroke();
+  ctx.save(); ctx.translate(xr + 16, mT + ph2 / 2); ctx.rotate(-Math.PI / 2); ctx.fillText(vn(W, 1) + " m", 0, 0); ctx.restore();
+  // nhãn giữa
+  const area = S * W;
+  ctx.fillStyle = "#1f2937"; ctx.textAlign = "center"; ctx.font = "bold 16px sans-serif";
+  ctx.fillText(`${d.tuyen} (${d.roadClass}), ${vn(area, 2)} m²`, mL + pw / 2, mT + ph2 / 2 - 4);
+  ctx.font = "14px sans-serif"; ctx.fillStyle = "#5b6676";
+  ctx.fillText("Mặt đường: " + I.surface, mL + pw / 2, mT + ph2 / 2 + 16);
+  return cv.toDataURL("image/png");
+}
+
+/** Sơ đồ cần đèn với nhãn (1)-(4) -> dataURL. */
+export function armDataURL(d, doc = globalThis.document) {
+  const I = d.install;
+  const cv = doc.createElement("canvas"); cv.width = 300; cv.height = 240;
+  const ctx = cv.getContext("2d"); ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, cv.width, cv.height);
+  ctx.strokeStyle = "#374151"; ctx.lineWidth = 2.5;
+  const gx = 40, gy = 210;                       // gốc trụ (mặt đất)
+  const topY = 52;                                // đỉnh trụ
+  // mặt đất
+  ctx.strokeStyle = "#9aa7b6"; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(10, gy); ctx.lineTo(290, gy); ctx.stroke();
+  // trụ
+  ctx.strokeStyle = "#374151"; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(gx, gy); ctx.lineTo(gx, topY); ctx.stroke();
+  // cần nghiêng + đèn
+  const armLen = 120, inc = (I.tilt || 0) * Math.PI / 180;
+  const ex = gx + armLen * Math.cos(inc) * 0.9, ey = topY - armLen * Math.sin(inc) * 0.9 + 6;
+  ctx.beginPath(); ctx.moveTo(gx, topY + 6); ctx.lineTo(ex, ey); ctx.stroke();
+  ctx.fillStyle = "#f59e0b"; ctx.strokeStyle = "#b45309"; ctx.lineWidth = 1.5;
+  ctx.beginPath(); ctx.ellipse(ex, ey, 11, 5, 0, 0, 2 * Math.PI); ctx.fill(); ctx.stroke();
+  // nhãn
+  ctx.fillStyle = "#1f2937"; ctx.font = "13px sans-serif"; ctx.textAlign = "left";
+  ctx.fillText("(1) " + vn(I.H, 1) + " m", gx + 6, (gy + topY) / 2);
+  ctx.fillText("(3) " + vn(I.tilt, 0) + "°", gx + 16, topY + 26);
+  ctx.textAlign = "center";
+  ctx.fillText("(4) cần " + vn(I.boomLength, 2) + " m", (gx + ex) / 2, Math.min(ey, topY) - 10);
+  ctx.fillText("(2) vươn " + vn(I.overhang, 2) + " m", ex, gy - 10);
+  return cv.toDataURL("image/png");
+}
+
 // ---- Dựng PDF (trình duyệt): cần jsPDF + font Unicode + makeIntensity ----
 const vn = (x, d = 2) => (x == null || !isFinite(x)) ? "—" : Number(x).toFixed(d).replace(".", ",");
 
@@ -144,6 +264,15 @@ export function renderRoadPage(doc, { input, result, ph, meta, makeIntensity }) 
   doc.text(`Tuyến: ${d.tuyen}    Cấp đường: ${clsLbl}    Kết luận: ${d.pass ? "ĐẠT" : "KHÔNG ĐẠT"}`, M, y);
   doc.setTextColor(30, 30, 40); y += 8;
 
+  // Mặt bằng bố trí
+  doc.setFontSize(10.5); doc.text("Mặt bằng bố trí", M, y); y += 3;
+  try {
+    const plan = planDataURL(d, globalThis.document);
+    const pw = 150, phh = pw * 360 / 760;
+    doc.addImage(plan, "PNG", M, y, pw, phh);
+    y += phh + 5;
+  } catch (_) { y += 2; }
+
   // Thông số bộ đèn + Polar LDC
   doc.setFontSize(10.5); doc.text("Thông số bộ đèn", M, y); y += 2;
   const L = d.luminaire;
@@ -162,22 +291,34 @@ export function renderRoadPage(doc, { input, result, ph, meta, makeIntensity }) 
   } catch (_) {}
   y = Math.max(yAfter, y + 62) + 4;
 
-  // Lắp đặt
+  // Lắp đặt + cường độ + hình cần đèn
+  const I = d.install, en = d.energy;
+  const i70 = maxIntensityPerKlm(ph, makeIntensity, 70);
+  const i80 = maxIntensityPerKlm(ph, makeIntensity, 80);
+  const i90 = maxIntensityPerKlm(ph, makeIntensity, 90);
+  if (y + 46 > 282) { doc.addPage(); y = 16; }
   doc.setFontSize(10.5); doc.text("Thông số lắp đặt", M, y); y += 2;
-  const I = d.install;
-  y = drawTable(doc, M, y, [45, 40, 45, 40], [
-    ["Khoảng cột", vn(I.spacing, 1) + " m", "Bề rộng lòng đường", vn(I.width, 1) + " m"],
-    ["Độ cao đèn H", vn(I.H, 1) + " m", "Số làn xe", String(I.lanes)],
-    ["Vươn cần (net)", vn(I.overhang, 2) + " m", "Bố trí trụ", I.arrangement],
-    ["Góc nghiêng", vn(I.tilt, 0) + "°", "Hệ số bảo trì MF", vn(I.MF, 2)],
-  ], { rh: 6.5, fs: 8.5 });
-  y += 4.5;
+  const yI = drawTable(doc, M, y, [46, 32, 34, 20], [
+    ["Khoảng cột", vn(I.spacing, 1) + " m", "Bề rộng", vn(I.width, 1) + " m"],
+    ["(1) Độ cao H", vn(I.H, 1) + " m", "Số làn", String(I.lanes)],
+    ["(2) Vươn điểm sáng", vn(I.overhang, 2) + " m", "Bố trí", I.arrangement],
+    ["(3) Góc nghiêng", vn(I.tilt, 0) + "°", "(4) Cần", vn(I.boomLength, 2) + " m"],
+    ["Trụ→mép (setback)", vn(I.setback, 2) + " m", "MF", vn(I.MF, 2)],
+    ["Tiêu thụ", vn(en.Wkm, 0) + " W/km", "ULR/ULOR", "0,00/0,00"],
+  ], { rh: 6.3, fs: 8.3 });
+  try { doc.addImage(armDataURL(d, globalThis.document), "PNG", M + 132, y - 1, 50, 40); } catch (_) {}
+  const yJ = drawTable(doc, M + 132, y + 41, [28, 22], [
+    [{ t: "Cường độ max", c: [90, 100, 120] }, { t: "cd/klm", a: "right" }],
+    ["≥ 70°", vn(i70, 0)], ["≥ 80°", vn(i80, 0)], ["≥ 90°", vn(i90, 1)],
+  ], { rh: 5.6, fs: 7.6 });
+  y = Math.max(yI, yJ) + 3.5;
   doc.setFontSize(7.8); doc.setTextColor(90, 100, 120);
-  doc.text("Mặt đường: " + I.surface + "    ·    File IES: " + L.iesName.replace(/_IESNA2002$/i, "") + (d.autoSelect ? "  (app tự chọn)" : ""), M, y);
+  doc.text("Mặt đường: " + I.surface + "   ·   File IES: " + L.iesName.replace(/_IESNA2002$/i, "") + (d.autoSelect ? "  (app tự chọn)" : ""), M, y);
   doc.setTextColor(30, 30, 40); y += 6;
 
   // Bảng đánh giá
-  doc.setFontSize(10.5); doc.text("Kết quả đánh giá", M, y); y += 2;
+  if (y + 48 > 284) { doc.addPage(); y = 16; }
+  doc.setFontSize(10.5); doc.text("Kết quả đánh giá (Symbol · Tính toán · Yêu cầu · Đạt)", M, y); y += 2;
   const crows = [[{ t: "Chỉ tiêu", a: "left" }, { t: "Tính toán", a: "right" }, { t: "Yêu cầu", a: "right" }, { t: "Đạt", a: "center" }]];
   const op = { "Lav (Ltb)": "≥", "Uo": "≥", "Ul": "≥", "TI": "≤", "SR": "≥" };
   for (const r of d.checks) crows.push([
@@ -187,6 +328,18 @@ export function renderRoadPage(doc, { input, result, ph, meta, makeIntensity }) 
     { t: r.ok ? "✓" : "✗", a: "center", c: r.ok ? [31, 138, 76] : [192, 57, 43] },
   ]);
   y = drawTable(doc, M, y, [45, 48, 48, 24], crows, { header: true, rh: 7, fs: 9 });
+  y += 3;
+  doc.setFontSize(7.6); doc.setTextColor(90, 100, 120);
+  doc.text("Hệ số bảo trì MF = " + vn(I.MF, 2) + " dùng cho tính toán.", M, y);
+  doc.setTextColor(30, 30, 40); y += 5;
+
+  // Chỉ số năng lượng
+  if (y + 24 > 286) { doc.addPage(); y = 16; }
+  doc.setFontSize(10.5); doc.text("Chỉ số năng lượng", M, y); y += 2;
+  y = drawTable(doc, M, y, [48, 42, 50, 40], [
+    ["Mật độ công suất Dp", vn(en.Dp, 3) + " W/lx·m²", "Điện năng De", vn(en.De, 2) + " kWh/m²·yr"],
+    ["Tiêu thụ tuyến", vn(en.Wkm, 0) + " W/km", "Điện năng/năm (1 nhịp)", vn(en.annualKwh, 1) + " kWh/yr"],
+  ], { rh: 6.5, fs: 8.5 });
   y += 5;
 
   // Độ rọi
