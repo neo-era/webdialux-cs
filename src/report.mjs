@@ -92,11 +92,11 @@ export function energyIndicators({ P, spacing, width, Eav, arrangement, hours = 
 }
 
 /** Lưới 2D [hàng y][cột x] từ Evals phẳng. */
-export function grid2D(result) {
+export function grid2D(result, vals = result.Evals) {
   const { nLong, nTrans, dL, dT } = result.grid;
   const xs = Array.from({ length: nLong }, (_, i) => dL / 2 + i * dL);
   const ys = Array.from({ length: nTrans }, (_, j) => dT / 2 + j * dT);
-  const g = ys.map((_, j) => xs.map((_, i) => result.Evals[i * nTrans + j]));
+  const g = ys.map((_, j) => xs.map((_, i) => vals[i * nTrans + j]));
   return { xs, ys, g };
 }
 
@@ -419,6 +419,40 @@ function drawTable(doc, x, y, cols, rows, opt = {}) {
   return cy;
 }
 
+/** Sang trang mới trong báo cáo 1 tuyến: in đầu trang nhỏ (tên tuyến) và trả y bắt đầu. */
+function newPage(doc, d) {
+  doc.addPage();
+  doc.setFontSize(7.8); doc.setTextColor(120, 130, 145);
+  doc.text(fitText(doc, (d.tuyen || "") + "  ·  Báo cáo tính toán chiếu sáng đường (QCVN 07-7:2023)", 182), 14, 10);
+  doc.setTextColor(30, 30, 40);
+  return 16;
+}
+
+/** Đóng tài liệu: chân trang © + "Trang i/N" cho MỌI trang (gọi 1 lần sau khi render xong). */
+export function finalizeDoc(doc) {
+  const n = doc.getNumberOfPages();
+  for (let i = 1; i <= n; i++) {
+    doc.setPage(i);
+    doc.setFontSize(7.5); doc.setTextColor(120, 130, 145);
+    doc.text("© 2026 maivulam · WebDialux-CS v1.1 · engine CIE 140 · bảng R3 CIE · TI theo Stiles-Holladay (xấp xỉ)", 14, 290);
+    doc.text(`Trang ${i}/${n}`, 196, 290, { align: "right" });
+    doc.setTextColor(30, 30, 40);
+  }
+  return doc;
+}
+
+/** Bảng lưới giá trị (hàng = y từ trên xuống, cột = x) — kiểu DIALux "Value grid". */
+function drawValueGrid(doc, M, y, G, digits, d) {
+  const nx = G.xs.length;
+  const c0 = 14, cw = Math.max(9, Math.floor((182 - c0) / nx * 10) / 10);
+  const fs = nx > 12 ? 6.2 : nx > 9 ? 6.8 : 7.4;
+  const rows = [[{ t: "y \\ x (m)", a: "left" }, ...G.xs.map((x) => ({ t: vn(x, 2), a: "center" }))]];
+  for (let j = G.ys.length - 1; j >= 0; j--) rows.push([{ t: vn(G.ys[j], 3), a: "left" }, ...G.g[j].map((v) => ({ t: vn(v, digits), a: "center" }))]);
+  const need = rows.length * 4.8 + 8;
+  if (y + need > 284) y = newPage(doc, d);
+  return drawTable(doc, M, y, [c0, ...Array(nx).fill(cw)], rows, { header: true, rh: 4.8, fs });
+}
+
 /** Tạo doc jsPDF đã nạp font Unicode (dùng chung cho báo cáo nhiều trang). */
 export function makeDoc({ jsPDF, font }) {
   const doc = new jsPDF({ unit: "mm", format: "a4" });
@@ -455,7 +489,7 @@ export function renderRoadPage(doc, { input, result, ph, meta, makeIntensity }) 
   } catch (_) { y += 2; }
 
   // Mặt bằng bố trí
-  if (y + 78 > 284) { doc.addPage(); y = 16; }
+  if (y + 78 > 284) { y = newPage(doc, d); }
   doc.setFontSize(10.5); doc.text("Mặt bằng bố trí", M, y); y += 3;
   try {
     const plan = planDataURL(d, globalThis.document);
@@ -465,7 +499,7 @@ export function renderRoadPage(doc, { input, result, ph, meta, makeIntensity }) 
   } catch (_) { y += 2; }
 
   // Thông số bộ đèn + Polar LDC
-  if (y + 72 > 284) { doc.addPage(); y = 16; }
+  if (y + 72 > 284) { y = newPage(doc, d); }
   doc.setFontSize(10.5); doc.text("Thông số bộ đèn", M, y); y += 2;
   const L = d.luminaire;
   const yAfter = drawTable(doc, M, y, [46, 56], [
@@ -498,7 +532,7 @@ export function renderRoadPage(doc, { input, result, ph, meta, makeIntensity }) 
   const arrText = /đối xứng|doi xung/i.test(I.arrangement) ? "hai bên đối diện"
     : /so le|staggered/i.test(I.arrangement) ? "hai bên so le"
     : /giữa/i.test(I.arrangement) ? "trên dải phân cách" : "một bên";
-  if (y + 70 > 284) { doc.addPage(); y = 16; }
+  if (y + 70 > 284) { y = newPage(doc, d); }
   doc.setFontSize(9.6); doc.setTextColor(40, 46, 58);
   doc.text(fitText(doc, L.iesName.replace(/_IESNA2002(\.IES)?$/i, "") + "  (" + arrText + ")", 182), M, y); y += 3;
   doc.setTextColor(30, 30, 40);
@@ -529,7 +563,7 @@ export function renderRoadPage(doc, { input, result, ph, meta, makeIntensity }) 
   doc.setTextColor(30, 30, 40); y += 6;
 
   // Bảng đánh giá
-  if (y + 48 > 284) { doc.addPage(); y = 16; }
+  if (y + 48 > 284) { y = newPage(doc, d); }
   doc.setFontSize(10.5); doc.text("Kết quả đánh giá (Symbol · Tính toán · Yêu cầu · Đạt)", M, y); y += 2;
   const crows = [[{ t: "Chỉ tiêu", a: "left" }, { t: "Tính toán", a: "right" }, { t: "Yêu cầu", a: "right" }, { t: "Đạt", a: "center" }]];
   const op = { "Lav (Ltb)": "≥", "Uo": "≥", "Ul": "≥", "TI": "≤", "SR": "≥" };
@@ -546,7 +580,7 @@ export function renderRoadPage(doc, { input, result, ph, meta, makeIntensity }) 
   doc.setTextColor(30, 30, 40); y += 5;
 
   // Chỉ số năng lượng
-  if (y + 24 > 286) { doc.addPage(); y = 16; }
+  if (y + 24 > 286) { y = newPage(doc, d); }
   doc.setFontSize(10.5); doc.text("Chỉ số năng lượng", M, y); y += 2;
   y = drawTable(doc, M, y, [48, 42, 50, 40], [
     ["Mật độ công suất Dp", vn(en.Dp, 3) + " W/lx·m²", "Điện năng De", vn(en.De, 2) + " kWh/m²·yr"],
@@ -561,7 +595,7 @@ export function renderRoadPage(doc, { input, result, ph, meta, makeIntensity }) 
     const aspect = g.ys.length / g.xs.length;
     let iw = 118, ih = iw * aspect;
     const maxH = 50; if (ih > maxH) { ih = maxH; iw = ih / aspect; } // giới hạn chiều cao ảnh
-    if (y + ih + 14 > 288) { doc.addPage(); y = 16; } // tránh tràn trang
+    if (y + ih + 14 > 288) { y = newPage(doc, d); } // tránh tràn trang
     const fc = falseColorDataURL(result, globalThis.document);
     doc.addImage(fc, "PNG", M, y, iw, ih);
     doc.setFontSize(8); doc.text(`${vn(result.grid.S,0)} m × ${vn(result.grid.W,1)} m (dọc × ngang)`, M, y + ih + 4);
@@ -573,15 +607,48 @@ export function renderRoadPage(doc, { input, result, ph, meta, makeIntensity }) 
     y += ih + 9;
   } catch (_) { y += 4; }
 
-  // Observer
-  if (y + 10 + d.observers.length * 6.5 > 286) { doc.addPage(); y = 16; } // tránh tràn trang
-  doc.setFontSize(10.5); doc.text("Kết quả theo người quan sát", M, y); y += 2;
-  const orows = [[{ t: "Observer (y, m)", a: "left" }, "Lav", "Uo", "Ul", "TI %"]];
-  d.observers.forEach((o, i) => orows.push([`#${i + 1}  (y=${vn(o.y, 2)})`, vn(o.Lav), vn(o.Uo), vn(o.Ul), vn(o.TI, 0)]));
-  y = drawTable(doc, M, y, [50, 30, 30, 30, 30], orows, { header: true, rh: 6.5, fs: 8.5 });
+  // #1 Lưới giá trị số độ rọi (Value grid)
+  try {
+    const G = grid2D(result);
+    if (y + (G.ys.length + 1) * 4.8 + 14 > 284) { y = newPage(doc, d); }
+    doc.setFontSize(9.5); doc.setTextColor(40, 46, 58);
+    doc.text("Độ rọi ngang duy trì [lx] — lưới giá trị", M, y); y += 2; doc.setTextColor(30, 30, 40);
+    y = drawValueGrid(doc, M, y, G, 1, d) + 5;
+  } catch (_) { y += 2; }
 
-  doc.setFontSize(7.5); doc.setTextColor(120, 130, 145);
-  doc.text("© 2026 maivulam · WebDialux-CS v1.1 · engine CIE 140 · bảng R3 CIE · TI theo Stiles-Holladay (xấp xỉ)", M, 290);
+  // #3 Observer: vị trí (x, y, z) + Tính toán / Yêu cầu / Đạt từng chỉ tiêu (kiểu DIALux)
+  const req = result.req, r2 = (v) => Math.round(v * 100) / 100;
+  const obsBlockH = 2 + 7 + 4 * 6.2 + 3;
+  if (y + 10 + obsBlockH > 284) { y = newPage(doc, d); }
+  doc.setFontSize(10.5); doc.text("Kết quả theo người quan sát", M, y); y += 2;
+  d.observers.forEach((o, i) => {
+    if (y + obsBlockH > 284) { y = newPage(doc, d); }
+    const chk = { Lav: r2(o.Lav) >= req.Ltb, Uo: r2(o.Uo) >= req.Uo, Ul: r2(o.Ul) >= req.Ul, TI: Math.round(o.TI) <= req.TI };
+    const ok = (b) => ({ t: b ? "✓" : "✗", a: "center", c: b ? [31, 138, 76] : [192, 57, 43] });
+    const rows = [
+      [{ t: `Observer ${i + 1}  —  vị trí: -60,000 m; ${vn(o.y, 3)} m; 1,500 m`, a: "left", c: [40, 46, 58] }, { t: "Tính toán", a: "right" }, { t: "Yêu cầu", a: "right" }, { t: "Đạt", a: "center" }],
+      ["Lav", vn(o.Lav) + " cd/m²", "≥ " + vn(req.Ltb) + " cd/m²", ok(chk.Lav)],
+      ["Uo", vn(o.Uo), "≥ " + vn(req.Uo), ok(chk.Uo)],
+      ["Ul", vn(o.Ul), "≥ " + vn(req.Ul), ok(chk.Ul)],
+      ["TI", vn(o.TI, 0) + " %", "≤ " + vn(req.TI, 0) + " %", ok(chk.TI)],
+    ];
+    y = drawTable(doc, M, y, [86, 36, 36, 24], rows, { header: true, rh: 6.2, fs: 8.3 }) + 3;
+  });
+  doc.setFontSize(7.4); doc.setTextColor(120, 130, 145);
+  doc.text(fitText(doc, "Observer đặt cách trường tính 60 m về phía trước, cao 1,5 m, trên tim từng làn (CIE 140). Kết quả mặt đường = trường hợp xấu nhất qua các observer.", 182), M, y);
+  doc.setTextColor(30, 30, 40); y += 6;
+
+  // #4 Lưới giá trị độ chói theo từng observer (khi engine chạy detail=true)
+  result.observers.forEach((o, i) => {
+    if (!o.Lvals) return;
+    try {
+      const GL = grid2D(result, o.Lvals);
+      if (y + (GL.ys.length + 1) * 4.8 + 14 > 284) { y = newPage(doc, d); }
+      doc.setFontSize(9.5); doc.setTextColor(40, 46, 58);
+      doc.text(`Observer ${i + 1}: độ chói duy trì, mặt đường khô [cd/m²] — lưới giá trị`, M, y); y += 2; doc.setTextColor(30, 30, 40);
+      y = drawValueGrid(doc, M, y, GL, 2, d) + 5;
+    } catch (_) { y += 2; }
+  });
   return doc;
 }
 
@@ -589,5 +656,5 @@ export function renderRoadPage(doc, { input, result, ph, meta, makeIntensity }) 
 export function buildRoadPdf({ jsPDF, input, result, ph, meta, makeIntensity, font }) {
   const doc = makeDoc({ jsPDF, font });
   renderRoadPage(doc, { input, result, ph, meta, makeIntensity });
-  return doc;
+  return finalizeDoc(doc);
 }
