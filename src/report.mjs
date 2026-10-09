@@ -10,8 +10,16 @@ export function reportData(input, result, ph, meta = {}) {
     tuyen: meta.tuyen || "", roadClass: result.roadClass,
     autoClass: !!meta.autoClass, autoSelect: !!meta.autoSelect, classSource: meta.classSource || "",
     luminaire: {
-      model: meta.model || "", fitting: meta.fitting || "", ncc: meta.ncc || "",
-      P: ph.inputWatts, lumens: ph.totalLumens, efficacy: eff, iesName: meta.iesName || "",
+      model: meta.model || ph.lumcat || "",
+      articleNo: (ph.lumcat ? ph.lumcat + (ph.lampCode ? " " + ph.lampCode : "") : (ph.lampCode || meta.model || "")),
+      articleName: ph.luminaireName || "",
+      fitting: meta.fitting || "", ncc: meta.ncc || ph.manufac || "",
+      P: ph.inputWatts,
+      phiLamp: ph.totalLumens, phiLum: ph.totalLumens, // LED: ΦLuminaire ≈ ΦLamp
+      eta: ph.totalLumens ? 100 : null,                // hiệu suất bộ đèn (%)
+      efficacy: eff,                                   // lm/W
+      cct: meta.cct || ph.cct || null, cri: meta.cri || ph.cri || null,
+      iesName: meta.iesName || "",
     },
     install: {
       spacing: input.spacing, H: input.H, overhang: input.overhang, tilt: input.tilt,
@@ -279,18 +287,25 @@ export function renderRoadPage(doc, { input, result, ph, meta, makeIntensity }) 
   // Thông số bộ đèn + Polar LDC
   doc.setFontSize(10.5); doc.text("Thông số bộ đèn", M, y); y += 2;
   const L = d.luminaire;
-  const yAfter = drawTable(doc, M, y, [40, 60], [
-    [{ t: "Loại đèn", c: [90, 100, 120] }, L.model],
-    ["Fitting", L.fitting],
-    ["Nhà cung cấp", L.ncc],
+  const yAfter = drawTable(doc, M, y, [36, 64], [
+    [{ t: "Nhà cung cấp", c: [90, 100, 120] }, L.ncc || "—"],
+    ["Mã bộ đèn", L.articleNo || "—"],
+    ["Tên bộ đèn", L.articleName || L.model || "—"],
+    ["Fitting", L.fitting || "—"],
     ["Công suất P", vn(L.P, 1) + " W"],
-    ["Quang thông", vn(L.lumens, 0) + " lm"],
-    ["Hiệu suất", vn(L.efficacy, 1) + " lm/W"],
-  ], { rh: 6.5, fs: 9 });
+    ["Quang thông bóng ΦLamp", vn(L.phiLamp, 0) + " lm"],
+    ["Quang thông bộ đèn ΦLum", vn(L.phiLum, 0) + " lm"],
+    ["Hiệu suất bộ đèn η", vn(L.eta, 0) + " %"],
+    ["Hiệu suất phát sáng", vn(L.efficacy, 1) + " lm/W"],
+    ["Nhiệt độ màu CCT", L.cct ? L.cct + " K" : "—"],
+    ["Chỉ số hoàn màu CRI", L.cri != null ? String(L.cri) : "—"],
+  ], { rh: 6.0, fs: 8.6 });
   try {
     const polar = polarDataURL(ph, makeIntensity, globalThis.document);
-    doc.addImage(polar, "PNG", M + 108, y, 56, 56);
-    doc.setFontSize(8); doc.text("Polar LDC — đỏ: C0-C180, xanh: C90-C270", M + 108, y + 60);
+    doc.addImage(polar, "PNG", M + 112, y, 54, 54);
+    doc.setFontSize(8); doc.setTextColor(90, 100, 120);
+    doc.text("Polar LDC — đỏ: C0-C180, xanh: C90-C270 (cd/klm)", M + 108, y + 58);
+    doc.setTextColor(30, 30, 40);
   } catch (_) {}
   y = Math.max(yAfter, y + 62) + 4;
 

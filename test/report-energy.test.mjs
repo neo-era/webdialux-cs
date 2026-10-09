@@ -37,3 +37,14 @@ test("maxIntensityPerKlm: trả cd/klm hợp lý, giảm dần ở góc cao", ()
   assert.ok(i90 < i70, "cường độ góc 90° nhỏ hơn 70°");
   assert.ok(i80 <= i70 && i90 <= i80, "giảm dần 70->80->90");
 });
+
+test("parseIES: rút Article No. / tên bộ đèn / NSX từ keyword", () => {
+  assert.equal(ph.lumcat, "MAGNOLIA");
+  assert.ok(/^BL-STR/.test(ph.lampCode), "lampCode rút từ [LAMP]");
+  assert.ok(!/\(/.test(ph.lampCode), "lampCode đã bỏ phần ngoặc");
+  assert.equal(ph.luminaireName && ph.luminaireName.length > 0, true);
+  assert.ok(/^BELED/.test(ph.manufac), "NSX từ [MANUFAC]");
+  // IES không có CCT/CRI -> null (sẽ hiển thị "—")
+  assert.ok(ph.cct === null || /^\d+$/.test(ph.cct));
+  assert.ok(ph.cri === null || /^\d+$/.test(ph.cri));
+});

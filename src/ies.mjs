@@ -85,8 +85,34 @@ export function parseIES(text) {
     width, length, height,
     nV, nH, vAngles, hAngles, candela,
     totalLumens: (lumensPerLamp > 0 ? lumensPerLamp * numLamps : null),
-    keywords, manufac: keywords.MANUFAC || keywords.MANUFACTURER || null,
+    keywords,
+    manufac: keywords.MANUFAC || keywords.MANUFACTURER || null,
+    lumcat: keywords.LUMCAT || null,
+    lampCode: (keywords.LAMP || "").replace(/\s*\([^)]*\)\s*$/, "").trim() || null,
+    luminaireName: keywords.LUMINAIRE || null,
+    cct: findKeyword(keywords, ["CCT", "COLORTEMP", "COLOURTEMP", "KELVIN", "TC"], /(\d{3,5})\s*K/i),
+    cri: findKeyword(keywords, ["CRI", "RA", "COLORRENDER", "COLOURRENDER"], /(?:CRI|RA)\s*[:=]?\s*(\d{2,3})/i),
   };
+}
+
+/**
+ * Tìm trị số CCT/CRI trong keyword IES: ưu tiên key tên khớp danh sách;
+ * nếu không có, dò số theo regex trong mọi giá trị keyword ([OTHER], [LAMP]...).
+ */
+function findKeyword(kw, names, rx) {
+  for (const n of names) {
+    for (const k of Object.keys(kw)) {
+      if (k.replace(/[^A-Z0-9]/gi, "").toUpperCase() === n) {
+        const m = String(kw[k]).match(/(\d{2,5})/);
+        if (m) return m[1];
+      }
+    }
+  }
+  for (const k of Object.keys(kw)) {
+    const m = String(kw[k]).match(rx);
+    if (m) return m[1];
+  }
+  return null;
 }
 
 // ---- Nội suy cường độ theo hướng (C ngang, gamma dọc), đơn vị độ ----
