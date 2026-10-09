@@ -352,7 +352,15 @@ function drawRowsRanked(tb){
         `<td class="t"><span class="pill na">${r.status}</span></td>`;
       tb.appendChild(tr); continue;
     }
-    const opts=r.options||[];
+    const opts=(r.options||[]).filter(o=>o.pass); // bỏ hẳn các bộ rớt
+    if(opts.length===0){
+      const tr=document.createElement("tr"); tr.className="route-head";
+      tr.innerHTML=`<td class="t num">${r.stt??""}</td><td class="t">${r.tuyen??""}</td>`+
+        `<td class="num">${autoMark(r.roadClass||"",r.autoClass,clsTip)}</td>`+
+        `<td class="t" colspan="10" style="color:var(--muted)">không có bộ đèn nào Đạt</td>`+
+        `<td class="t"><span class="pill fail">KHÔNG ĐẠT</span></td>`;
+      tb.appendChild(tr); continue;
+    }
     opts.forEach((o,k)=>{
       const tr=document.createElement("tr");
       if(o.chosen) tr.className="chosen";
@@ -403,7 +411,14 @@ async function saveRanked(){
           "","","","", "","","","","","", r.status, "","","","","","","","", "", "","",""]);
         continue;
       }
-      const opts=r.options||[]; const chosen=r.chosen;
+      const opts=(r.options||[]).filter(o=>o.pass); const chosen=r.chosen;
+      if(opts.length===0){
+        aoa.push([r.stt??"",r.tuyen??"", n2(g.H),n2(g.overhang),n0(g.tilt),n2(g.width),n2(g.spacing),"", g.arrangement||"", "", g.lanes||"",
+          meta.loaituyen||"", r.roadClass||"", srcLbl(r.classSource),
+          yge(req.Ltb),yge(req.Uo),yge(req.Ul),yle(req.TI),yge(req.SR),
+          "","","","", "","","","","","", "KHÔNG ĐẠT (không bộ đèn nào đạt)", "","","","","","","","", "", "","",""]);
+        continue;
+      }
       opts.forEach((o,k)=>{
         const head=k===0;
         aoa.push([
