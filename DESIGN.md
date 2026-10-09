@@ -55,3 +55,15 @@ Mục tiêu: sửa số trong Excel → Kết quả/điểm/hạng/✓/tổng h�
 - Sheet 2: Số tuyến/Số bộ/kW = SUMPRODUCT so bằng trên sheet 3 theo (Hãng, Loại, CS) — không dùng COUNTIFS vì * ? ~ trong tên đèn thành ký tự đại diện; TỔNG CỘNG = SUM. Danh sách tổ hợp cố định theo lúc xuất (sửa số làm đổi đèn chọn sang tổ hợp mới thì không tự thêm dòng).
 - Kiểm chứng: test/xlsxformula.test.mjs tính lại toàn bộ công thức bằng HyperFormula (`useArrayArithmetic: true` — bắt buộc để SUMPRODUCT tính mảng như Excel) và so với kết quả app. Đã đối chiếu thêm bằng Excel 16 thật qua COM (786 tuyến, 19.886 ô + bộ IES trùng 35.406 ô: lệch 0).
 - Hạn chế còn lại: màu tô (dòng ✓, ô Kết quả) là tĩnh, không đổi theo khi sửa số; sắp xếp lại sheet 1 làm hỏng dải nhóm; bản dự phòng SheetJS (khi không tải được ExcelJS) vẫn chỉ có giá trị.
+
+## PWA (cài như ứng dụng, chạy offline)
+- `manifest.webmanifest`: name/short_name WebDialux-CS, `start_url`/`scope` = `./` (chạy được dưới /webdialux-cs/ của GitHub Pages), `display: standalone`, icon 192/512 + 512 maskable (`icons/`, sinh bằng `tools/make-icons.mjs`).
+- `sw.js` (service worker cổ điển, cùng thư mục index.html):
+  - `VERSION` trong sw.js phải bằng `src/version.mjs` (test kiểm) → đổi phiên bản = byte sw.js đổi = trình duyệt cài SW mới, cache `webdialux-<VERSION>`; bản cũ bị xoá khi activate.
+  - Precache: `./`, index.html, manifest, icon, mọi `src/*.mjs` (`cache: reload`); 3 thư viện CDN tải dạng **cors** + kiểm `res.ok` (opaque thì 404 cũng bị lưu và bị đệm ~7 MB/mục); CDN lỗi không làm hỏng cài đặt, thiếu thì tải bù lần dùng sau.
+  - Fetch: cùng origin → mạng trước với `cache: no-cache` (bỏ qua max-age 600 s của GitHub Pages), lưu bản 200 qua `waitUntil`; quá 4 s thì dùng cache nếu có, chưa có thì vẫn chờ mạng. CDN → cache trước, thiếu thì tải bù. Cả mạng lẫn cache đều không có → trang HTML báo offline.
+  - Vẫn phải tăng VERSION mỗi lần deploy: module nạp lười (report/font/xlsxpro) chỉ được làm mới khi dùng, offline có thể ghép index mới với module cũ nếu không đổi cache.
+  - Trang kiểm bản mới mỗi giờ và khi quay lại tab (`reg.update()`).
+  - SW mới chờ (waiting) → trang hiện thanh "Có bản mới — Tải lại"; bấm → `SKIP_WAITING` → `controllerchange` → reload.
+- Đăng ký SW chỉ khi `serviceWorker` có và không phải `file://`.
+- Kiểm chứng: test/pwa.test.mjs (manifest, icon đúng kích thước, danh sách precache đủ file thật, VERSION khớp); E2E puppeteer: installability (CDP), offline reload → nạp Excel/IES, Chạy, xuất Excel/PDF; đổi VERSION của sw.js → hiện thanh bản mới.

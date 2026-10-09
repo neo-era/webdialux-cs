@@ -9,8 +9,9 @@ Chạy ngay: **https://neo-era.github.io/webdialux-cs/** · Phiên bản: xem `s
 - **Tự xác định cấp đường** theo ưu tiên: cột `Cấp đường` → cột `Loại tuyến` (tên theo QCVN 07) → suy từ hình học.
 - **Hai chế độ**: *Đa phương án* (tính tất cả bộ đèn trong thư viện, chấm điểm Borda lần 1/lần 2, chọn ✓ đèn tối ưu = công suất nhỏ nhất vẫn Đạt) và *Từng phương án* (1 đèn/dòng).
 - **Mặt đường q0** chọn được (CIE R3, mặc định 0,08 theo DIALux; 0,07 chuẩn CIE), **MF** tuỳ chỉnh.
-- **Tải file kết quả Excel** (ExcelJS, định dạng chuyên nghiệp, 3 sheet): *Chấm điểm chi tiết* · *Tổng hợp đèn* (theo NSX · loại · công suất → số tuyến, số bộ, kW) · *Theo tuyến*. Luôn là **file mới**, không ghi lên file gốc.
-- **Xuất PDF** kiểu DIALux, 4 trang/tuyến: phối cảnh 3D ban đêm từ lưới E thực tính (màu theo CCT, trụ ngoài lòng đường, đúng bố trí 1 bên/đối xứng/so le), mặt bằng, thông số bộ đèn + Polar LDC, lắp đặt + Imax 70/80/90°, bảng Ký hiệu/Tính toán/Yêu cầu/Kiểm tra, chỉ số năng lượng, false-color độ rọi, lưới giá trị E, kết quả & lưới độ chói theo từng observer.
+- **Tải file kết quả Excel** (ExcelJS, định dạng chuyên nghiệp, 3 sheet): *Chấm điểm chi tiết* · *Tổng hợp đèn* (theo NSX · loại · công suất → số tuyến, số bộ, kW) · *Theo tuyến*. Luôn là **file mới**, không ghi lên file gốc. Kết quả/điểm/hạng/✓/tổng hợp là **công thức Excel** — sửa số trong Excel là tự tính lại.
+- **Xuất PDF** kiểu DIALux, 3–4 trang/tuyến, nhiều tuyến tự chia **tối đa 300 tuyến/file** (ảnh nén, ≈ 40–65 MB/file): phối cảnh 3D ban đêm từ lưới E thực tính (màu theo CCT, trụ ngoài lòng đường, đúng bố trí 1 bên/đối xứng/so le), mặt bằng, thông số bộ đèn + Polar LDC, lắp đặt + Imax 70/80/90°, bảng Ký hiệu/Tính toán/Yêu cầu/Kiểm tra, chỉ số năng lượng, false-color độ rọi, lưới giá trị E, kết quả & lưới độ chói theo từng observer.
+- **PWA**: cài như ứng dụng (Chrome/Edge/Android/iOS) và **chạy offline** sau lần mở đầu; có thông báo khi có bản mới.
 - Tên file xuất: `WebDialux_KetQua[_ChamDiem]_<tên file dữ liệu>_<YYYYMMDD-HHMM>.xlsx`, `WebDialux_BaoCao_<tuyến|N_tuyen>_<YYYYMMDD-HHMM>.pdf`.
 
 ## Sử dụng
@@ -35,8 +36,10 @@ Chạy local: `python -m http.server 8080` trong thư mục repo → http://loca
 | `src/batch.mjs`, `src/scoring.mjs` | Chạy hàng loạt, chấm điểm Borda, chọn đèn tối ưu |
 | `src/xlsxpro.mjs` | Workbook kết quả 3 sheet (ExcelJS); `toRankedShape` dùng chung cho 2 chế độ |
 | `src/report.mjs`, `src/font.mjs` | Báo cáo PDF (jsPDF + canvas), font tiếng Việt nhúng |
+| `src/pdfparts.mjs` | Chia báo cáo nhiều tuyến thành nhiều file PDF |
+| `sw.js`, `manifest.webmanifest`, `icons/` | PWA: cache offline theo phiên bản, cài đặt; icon sinh bằng `tools/make-icons.mjs` |
 | `cli.mjs` | Chạy dòng lệnh một ca |
-| `test/` | Bộ test `node --test` (53 test) |
+| `test/` | Bộ test `node --test` (81 test; Excel công thức kiểm bằng HyperFormula) |
 | `data/ies/`, `data/dialux_cases.json` | IES mẫu, 14 ca đối chiếu DIALux |
 
 ## Kiểm chứng
@@ -44,11 +47,11 @@ Chạy local: `python -m http.server 8080` trong thư mục repo → http://loca
 
 ## Phát triển
 ```bash
-npm install          # exceljs, @napi-rs/canvas, jspdf (devDependencies cho test)
+npm install          # exceljs, @napi-rs/canvas, jspdf, hyperformula (devDependencies cho test)
 node --test
 node cli.mjs data/ies/MAGNOLIA-BL-STR16A-PD36-60W.ies --H 7.5 --overhang 1 --spacing 35 --width 7 --tilt 15 --class D1
 ```
-Quy ước: mỗi lần push tăng `VERSION` 0,1 (`src/version.mjs` + `package.json`).
+Quy ước: mỗi lần push tăng `VERSION` 0,1 (`src/version.mjs` + `package.json` + hằng `VERSION` trong `sw.js` — test kiểm khớp). Thêm file vào `src/` thì thêm vào `PRECACHE` trong `sw.js` (test báo nếu thiếu).
 
 ## Còn lại
 ULR/ULOR tính thật (đang 0,00), đường đẳng rọi (isolines), cấp EN 13201 tham chiếu, cải thiện TI.

@@ -1,6 +1,10 @@
 <meta charset="utf-8">
 <title>WebDialux-CS</title>
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#2563a8">
+<link rel="icon" href="icons/icon-192.png" type="image/png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <style>
 /* Layout: thanh công cụ trên cùng cố định, dải KPI, bảng kết quả cuộn dọc. Công cụ kỹ thuật, quét & thao tác. */
 :root{
@@ -72,6 +76,7 @@ tr.chosen td.t:first-child,tr.chosen td{font-weight:500}
 .note{font-size:12px;color:var(--muted);margin-top:12px}
 .owner{margin-top:20px;padding-top:12px;border-top:1px solid var(--line);text-align:center;color:var(--muted);font-size:12px}
 a{color:var(--accent)}
+.upd{position:fixed;left:50%;bottom:16px;transform:translateX(-50%);z-index:60;display:flex;gap:10px;align-items:center;background:var(--surface);border:1px solid var(--accent);border-radius:10px;padding:8px 10px 8px 14px;box-shadow:0 10px 30px rgba(0,0,0,.22);font-size:13.5px;max-width:calc(100vw - 32px)}
 .overlay{position:fixed;inset:0;background:rgba(8,12,18,.55);display:flex;align-items:flex-start;justify-content:center;padding:24px 16px;z-index:50;overflow:auto}
 .guide{background:var(--surface);border:1px solid var(--line);border-radius:12px;max-width:720px;width:100%;padding:20px 24px;box-shadow:0 12px 44px rgba(0,0,0,.28)}
 .guide h2{margin:0 0 4px;font-size:18px}
@@ -87,6 +92,7 @@ a{color:var(--accent)}
 .guide th{background:var(--surface-2);color:var(--muted);text-transform:none;letter-spacing:normal;position:static;font-size:12.5px}
 </style>
 
+<div class="upd" id="updBar" hidden role="status">Có bản mới của WebDialux-CS. <button class="primary" id="updBtn">Tải lại</button></div>
 <div class="wrap">
   <header class="bar">
     <div class="brand">
@@ -198,17 +204,26 @@ a{color:var(--accent)}
       <li><b>Sheet "Chấm điểm chi tiết"</b>: mỗi tuyến nhiều dòng — một dòng cho mỗi bộ đèn <b>Đạt</b> (các bộ không đạt được loại bỏ). Cột: thông số tuyến &amp; lắp đặt, yêu cầu QCVN (≥/≤), hãng · loại · công suất · file IES, kết quả Ltb/Uo/Ul/TI/SR/En, điểm Borda từng chỉ tiêu, tổng điểm lần 1 &amp; 2, hạng, dấu ✓ bộ đèn chọn (tô xanh). Có cố định tiêu đề + bộ lọc.</li>
       <li><b>Sheet "Tổng hợp đèn"</b>: gộp bộ đèn được chọn theo <b>Nhà sản xuất · Loại đèn · Công suất</b> → số tuyến, số bộ đèn, tổng kW, danh sách tuyến; dòng TỔNG CỘNG. Số bộ đèn lấy theo cột <code>SL đèn trình Sở (bộ)</code> nếu có, nếu không ước tính ⌈Chiều dài tuyến / Khoảng cột⌉ × số hàng đèn.</li>
       <li><b>Sheet "Theo tuyến"</b>: 1 dòng/tuyến với bộ đèn chọn, chỉ tiêu và kết luận ĐẠT / KHÔNG ĐẠT — tiện dán vào hồ sơ.</li>
+      <li><b>Có công thức Excel</b>: Kết quả ĐẠT/KHÔNG ĐẠT, điểm, tổng điểm, hạng, ✓, sheet <i>Theo tuyến</i> và <i>Tổng hợp đèn</i> là công thức — sửa một số Ltb/Uo/Ul/TI/SR trong Excel là tự tính lại. Ltb/Uo/Ul/TI/SR/En vẫn là số do app tính (lưu đủ chữ số, hiển thị 2 số lẻ). Không sắp xếp lại sheet <i>Chấm điểm chi tiết</i> (lọc thì được); màu tô giữ như lúc xuất.</li>
       <li>Tiêu đề file ghi dự án, ngày xuất, MF, q0 và phiên bản app để truy vết.</li>
     </ul>
 
     <h3>5. Báo cáo PDF</h3>
     <ul>
       <li><b>Tên file</b>: <code>WebDialux_BaoCao_&lt;tên tuyến&gt;_&lt;YYYYMMDD-HHMM&gt;.pdf</code> (1 tuyến) hoặc <code>WebDialux_BaoCao_&lt;N&gt;_tuyen_…pdf</code> (nhiều tuyến). Chỉ xuất các tuyến đang hiển thị theo bộ lọc.</li>
-      <li>Mỗi tuyến 4 trang theo bố cục DIALux: phối cảnh 3D ban đêm từ lưới E thực tính (màu theo CCT), mặt bằng bố trí; thông số bộ đèn đầy đủ + biểu đồ phân bố cường độ (Polar LDC); thông số lắp đặt + Imax 70/80/90°; bảng đánh giá Ký hiệu / Tính toán / Yêu cầu / Kiểm tra; chỉ số năng lượng (W/km, Dp, De, kWh/năm); bản đồ false-color độ rọi; lưới giá trị E; kết quả &amp; lưới độ chói theo từng observer.</li>
+      <li>Nhiều tuyến được <b>tự chia thành nhiều file, tối đa 300 tuyến/file</b> (mỗi file ≈ 40–65 MB), tên có <code>_phan1_3</code>, <code>_phan2_3</code>… Nếu trình duyệt hỏi "tải nhiều tệp", chọn <b>Cho phép</b>.</li>
+      <li>Mỗi tuyến 3–4 trang theo bố cục DIALux: phối cảnh 3D ban đêm từ lưới E thực tính (màu theo CCT), mặt bằng bố trí; thông số bộ đèn đầy đủ + biểu đồ phân bố cường độ (Polar LDC); thông số lắp đặt + Imax 70/80/90°; bảng đánh giá Ký hiệu / Tính toán / Yêu cầu / Kiểm tra; chỉ số năng lượng (W/km, Dp, De, kWh/năm); bản đồ false-color độ rọi; lưới giá trị E; kết quả &amp; lưới độ chói theo từng observer.</li>
       <li>Chân trang ghi phiên bản app và số trang. Không dùng logo/thương hiệu DIALux — chỉ tham chiếu bố cục.</li>
     </ul>
 
-    <h3>6. Lưu ý</h3>
+    <h3>6. Cài như ứng dụng &amp; chạy offline</h3>
+    <ul>
+      <li>Chrome/Edge: bấm biểu tượng <b>Cài đặt</b> (⊕) trên thanh địa chỉ hoặc menu ⋮ → <i>Cài đặt WebDialux-CS</i>. Android: menu ⋮ → <i>Thêm vào màn hình chính</i>. iPhone/iPad (Safari): Chia sẻ → <i>Thêm vào MH chính</i>.</li>
+      <li>Sau lần mở đầu có mạng, app <b>chạy được khi không có mạng</b>: nạp Excel/IES, tính, xuất Excel và PDF.</li>
+      <li>Khi có bản mới, góc dưới hiện thanh <b>"Có bản mới — Tải lại"</b>; bấm để dùng bản mới (kết quả đang xem trên màn hình sẽ mất, file đã tải về vẫn còn).</li>
+    </ul>
+
+    <h3>7. Lưu ý</h3>
     <ul>
       <li>Trong khung xem trước có thể bị chặn tải — mở app ở <code>neo-era.github.io/webdialux-cs/</code> hoặc local là tải mượt.</li>
       <li>Phiên bản app hiển thị cạnh tên (badge) và trong menu; mỗi bản cập nhật tăng 0,1. Nếu không thấy bản mới, nhấn <b>Ctrl+F5</b>.</li>
@@ -216,7 +231,7 @@ a{color:var(--accent)}
       <li><b>Độ chói</b> dùng bảng R3 CIE (khớp DIALux cho Ltb &amp; Uo). <b>TI</b> là ước tính, thiên an toàn — dùng tham khảo.</li>
     </ul>
 
-    <h3>7. Ngưỡng cấp đường (QCVN 07-7:2023)</h3>
+    <h3>8. Ngưỡng cấp đường (QCVN 07-7:2023)</h3>
     <table>
       <tr><th>Cấp</th><th>Ltb (cd/m²)</th><th>Uo</th><th>Ul</th><th>TI (%)</th><th>SR</th></tr>
       <tr><td>A</td><td>≥ 2,0</td><td>≥ 0,4</td><td>≥ 0,7</td><td>≤ 10</td><td>≥ 0,5</td></tr>
@@ -633,4 +648,23 @@ document.addEventListener("click", (e) => { if (!e.target.closest(".menu-wrap"))
 $("guideClose").onclick = () => { $("guide").hidden = true; };
 $("guide").addEventListener("click", (e) => { if (e.target.id === "guide") $("guide").hidden = true; });
 document.addEventListener("keydown", (e) => { if (e.key === "Escape") { $("guide").hidden = true; $("menu").hidden = true; } });
+
+// ---- PWA: cài như ứng dụng + chạy offline (sw.js) ----
+if ("serviceWorker" in navigator && location.protocol !== "file:") {
+  let userAsked = false; // chỉ reload khi người dùng bấm "Tải lại" (lần cài đầu cũng đổi controller)
+  navigator.serviceWorker.addEventListener("controllerchange", () => { if (userAsked) location.reload(); });
+  navigator.serviceWorker.register("./sw.js").then((reg) => {
+    const show = () => { $("updBar").hidden = false; };
+    if (reg.waiting && navigator.serviceWorker.controller) show();
+    reg.addEventListener("updatefound", () => {
+      const w = reg.installing;
+      if (w) w.addEventListener("statechange", () => { if (w.state === "installed" && navigator.serviceWorker.controller) show(); });
+    });
+    $("updBtn").onclick = () => { userAsked = true; if (reg.waiting) reg.waiting.postMessage("SKIP_WAITING"); else location.reload(); };
+    // tab mở lâu: kiểm bản mới mỗi giờ và khi quay lại tab
+    const check = () => reg.update().catch(() => {});
+    setInterval(check, 3600e3);
+    document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") check(); });
+  }).catch((e) => console.warn("Không đăng ký được service worker:", e));
+}
 </script>
