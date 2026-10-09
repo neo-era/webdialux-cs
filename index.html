@@ -110,7 +110,7 @@ a{color:var(--accent)}
         <select id="mode"><option value="rank">Đa phương án (chấm điểm &amp; chọn tối ưu)</option><option value="each">Từng phương án (1 đèn/dòng)</option></select>
       </label>
       <button id="btnRun" class="primary" disabled>▶ Chạy</button>
-      <button id="btnSave" disabled>💾 Ghi/Tải Excel</button>
+      <button id="btnSave" disabled title="Tải xuống file kết quả mới (.xlsx) — không ghi lên file Excel gốc">⬇️ Tải file kết quả</button>
       <button id="btnPdf" disabled>📑 Xuất PDF</button>
       <div class="menu-wrap">
         <button id="btnMenu" aria-haspopup="true">☰ Menu</button>
@@ -147,7 +147,7 @@ a{color:var(--accent)}
       <tbody id="tbody"></tbody>
     </table>
   </div>
-  <div class="legend" id="legend" hidden>Dấu <span class="auto">•</span> = giá trị do app tự xác định (cấp đường từ hình học) hoặc tự chọn (bộ đèn công suất nhỏ nhất vẫn Đạt). Bấm <b>💾 Ghi/Tải Excel</b> để xuất bảng kết quả đầy đủ.</div>
+  <div class="legend" id="legend" hidden>Dấu <span class="auto">•</span> = giá trị do app tự xác định (cấp đường từ hình học) hoặc tự chọn (bộ đèn công suất nhỏ nhất vẫn Đạt). Bấm <b>⬇️ Tải file kết quả</b> để tải file Excel kết quả mới (file gốc không bị thay đổi).</div>
 
   <div class="empty" id="empty">Chưa có dữ liệu.</div>
   <div class="note" id="note"></div>
@@ -182,13 +182,13 @@ a{color:var(--accent)}
       <li>Bấm <b>📁 Chọn thư mục IES</b> → chọn thư mục chứa .ies.</li>
       <li>Chỉnh <b>MF</b> (hệ số bảo trì, mặc định 0,8), <b>Mặt đường (q0)</b> và <b>Chế độ</b> nếu cần. <b>q0</b> là hệ số độ chói trung bình của mặt đường (CIE R3): mặc định <b>0,08</b> (Tarmac theo DIALux); chọn 0,07 nếu dùng R3 chuẩn CIE. Độ chói Ltb tỉ lệ thuận với q0.</li>
       <li>Bấm <b>▶ Chạy</b> → xem bảng kết quả + thẻ tổng hợp (Đạt / Không đạt / Thiếu IES). Lọc hoặc gõ tên tuyến để tìm.</li>
-      <li>Bấm <b>💾 Ghi/Tải Excel</b> để ghi kết quả (Ltb/Uo/Ul/TI/SR + Đạt) vào file.</li>
+      <li>Bấm <b>⬇️ Tải file kết quả</b> để tải file Excel kết quả mới (Ltb/Uo/Ul/TI/SR + Đạt). File gốc giữ nguyên.</li>
       <li>Bấm <b>📑 Xuất PDF</b> để xuất báo cáo kiểu DIALux (các tuyến đang lọc, 1 trang/tuyến).</li>
     </ol>
 
     <h3>3. Hai chế độ tính</h3>
     <ul>
-      <li><b>Đa phương án (chấm điểm &amp; chọn tối ưu)</b> — mặc định: với mỗi tuyến, app tính <b>tất cả bộ đèn trong thư mục IES</b> (nhiều hãng), liệt kê mỗi bộ một dòng, chấm điểm (Borda theo Ltb/Uo/Ul/TI/SR, tổng điểm lần 1 &amp; 2) và <b>đánh dấu ✓ đèn tối ưu</b> = công suất nhỏ nhất vẫn Đạt. Nếu dòng có ghi sẵn Loại đèn thì chỉ xét các bộ cùng model đó. Ghi/Tải Excel ra bảng chấm điểm nhiều dòng/tuyến đủ cột (YC, điểm, hạng, chọn).</li>
+      <li><b>Đa phương án (chấm điểm &amp; chọn tối ưu)</b> — mặc định: với mỗi tuyến, app tính <b>tất cả bộ đèn trong thư mục IES</b> (nhiều hãng), liệt kê mỗi bộ một dòng, chấm điểm (Borda theo Ltb/Uo/Ul/TI/SR, tổng điểm lần 1 &amp; 2) và <b>đánh dấu ✓ đèn tối ưu</b> = công suất nhỏ nhất vẫn Đạt. Nếu dòng có ghi sẵn Loại đèn thì chỉ xét các bộ cùng model đó. Tải file kết quả ra bảng chấm điểm nhiều dòng/tuyến đủ cột (YC, điểm, hạng, chọn) — file mới, không ghi lên file gốc.</li>
       <li><b>Từng phương án (1 đèn/dòng)</b>: chỉ tính đúng bộ đèn trên mỗi dòng (hoặc tự chọn nếu dòng để trống Loại đèn) — mỗi dòng 1 kết quả.</li>
     </ul>
 
@@ -579,11 +579,6 @@ $("btnPdf").onclick = async () => {
     const name = made===1 ? `BaoCao_${String(rows[idxs[0]][COLS.tuyen]||"tuyen").replace(/[^\p{L}\p{N}]+/gu,"_")}.pdf` : `BaoCao_WebDialux_${made}tuyen.pdf`;
     finalizeDoc(doc); // chân trang © + Trang i/N cho mọi trang
     const blob = doc.output("blob");
-    if("showSaveFilePicker" in window){
-      try{ const h=await window.showSaveFilePicker({suggestedName:name,types:[{description:"PDF",accept:{"application/pdf":[".pdf"]}}]});
-        const w=await h.createWritable(); await w.write(blob); await w.close(); setStatus(`Đã lưu PDF ${made} tuyến.`); return;
-      }catch(e){ if(e.name==="AbortError"){ setStatus("Đã huỷ lưu PDF."); return; } }
-    }
     const a=Object.assign(document.createElement("a"),{href:URL.createObjectURL(blob),download:name});
     document.body.appendChild(a); a.click(); a.remove();
     setStatus(`Đã tạo PDF ${made} tuyến để tải về (nếu trình duyệt trong khung chặn tải, chạy app trên GitHub Pages/local server).`);
@@ -598,12 +593,8 @@ $("mHelp").onclick = () => { $("menu").hidden = true; $("guide").hidden = false;
 
 // ---- Tải Excel mẫu ----
 async function saveXlsxBuffer(out, name){
+  // Luôn tải xuống như một file MỚI (thư mục Downloads) — không bao giờ ghi lên file Excel gốc người dùng đã mở
   const blob=new Blob([out],{type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"});
-  if("showSaveFilePicker" in window){
-    try{ const h=await window.showSaveFilePicker({suggestedName:name,types:[{description:"Excel",accept:{"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet":[".xlsx"]}}]});
-      const w=await h.createWritable(); await w.write(blob); await w.close(); return true;
-    }catch(e){ if(e.name==="AbortError") return false; }
-  }
   const a=Object.assign(document.createElement("a"),{href:URL.createObjectURL(blob),download:name});
   document.body.appendChild(a); a.click(); a.remove(); return true;
 }
