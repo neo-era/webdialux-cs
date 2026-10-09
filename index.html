@@ -90,7 +90,7 @@ a{color:var(--accent)}
 <div class="wrap">
   <header class="bar">
     <div class="brand">
-      <b>WebDialux-CS <span class="ver">v1.1</span></b>
+      <b>WebDialux-CS <span class="ver" id="verBadge">v1.2</span></b>
       <span>Mô phỏng chiếu sáng đường theo QCVN 07-7:2023 · bảng R3 CIE</span>
     </div>
     <div class="controls">
@@ -115,7 +115,7 @@ a{color:var(--accent)}
       <div class="menu-wrap">
         <button id="btnMenu" aria-haspopup="true">☰ Menu</button>
         <div class="menu" id="menu" hidden role="menu">
-          <div class="menu-sep">WebDialux-CS v1.1</div>
+          <div class="menu-sep" id="verMenu">WebDialux-CS v1.2</div>
           <button class="menu-item" id="mHelp" role="menuitem">📖 Hướng dẫn sử dụng</button>
           <button class="menu-item" id="mTemplate" role="menuitem">⬇ Tải Excel mẫu</button>
         </div>
@@ -215,15 +215,19 @@ a{color:var(--accent)}
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js"></script>
 <script type="module">
 import { buildIesIndex, runBatch, runBatchRanked } from "./src/batch.mjs";
 import { COLS, rowToGeometry, matchIES } from "./src/mapping.mjs";
 import { calcRoad } from "./src/engine.mjs";
 import { makeIntensity } from "./src/ies.mjs";
+import { VERSION } from "./src/version.mjs";
+document.getElementById("verBadge").textContent = VERSION;
+document.getElementById("verMenu").textContent = "WebDialux-CS " + VERSION;
 
 const $ = (id) => document.getElementById(id);
 const hasFSA = "showOpenFilePicker" in window;
-let xlsxBuf = null, xlsxHandle = null, wb = null, sheetName = null, rows = null;
+let xlsxBuf = null, xlsxHandle = null, wb = null, sheetName = null, rows = null, xlsxName = "";
 let iesFiles = [], iesIndex = [], results = null, resultMode = null;
 
 function setStatus(t, bad){ const s=$("status"); s.textContent=t; s.classList.toggle("bad",!!bad); }
@@ -244,6 +248,7 @@ $("btnXlsx").onclick = async () => {
 };
 function loadWb(name){
   try{
+    xlsxName = name || "";
     wb = XLSX.read(xlsxBuf,{type:"array"});
     sheetName = wb.SheetNames.includes("DU LIEU TUYEN") ? "DU LIEU TUYEN" : wb.SheetNames[0];
     rows = XLSX.utils.sheet_to_json(wb.Sheets[sheetName],{defval:null});
@@ -396,6 +401,19 @@ $("flt").onchange=drawRows; $("q").oninput=drawRows;
 
 // ---- Ghi/Tải kết quả: chế độ ĐA PHƯƠNG ÁN (chấm điểm) -> bảng nhiều dòng/tuyến ----
 async function saveRanked(){
+  // Ưu tiên bản định dạng chuyên nghiệp (ExcelJS, 3 sheet); nếu CDN không tải được thì dùng bản SheetJS phẳng bên dưới
+  if (window.ExcelJS) {
+    try {
+      const { buildResultWorkbook } = await import("./src/xlsxpro.mjs");
+      const q0sel = parseFloat($("q0").value) || 0.08, MFsel = parseFloat($("mf").value) || 0.8;
+      const wbx = await buildResultWorkbook(window.ExcelJS, { results, rows, q0: q0sel, MF: MFsel, version: VERSION, date: new Date(), projectName: xlsxName.replace(/\.(xlsx|xlsm)$/i, "") });
+      const buf = await wbx.xlsx.writeBuffer();
+      await saveXlsxBuffer(buf, "KET_QUA_WEBDIALUX_CHAM_DIEM.xlsx");
+      const tong = results.reduce((n, r) => n + ((r.options || []).filter(o => o.pass).length), 0);
+      setStatus(`Đã tạo file kết quả 3 sheet (Chấm điểm chi tiết · Tổng hợp đèn · Theo tuyến) — ${results.length} tuyến, ${tong} dòng đèn Đạt.`);
+      return;
+    } catch (e) { console.warn("ExcelJS export lỗi, dùng bản dự phòng:", e); }
+  }
   try{
     const q0sel=parseFloat($("q0").value)||0.08;
     const surf="CIE R3 · q0 "+String(q0sel).replace(".",",");

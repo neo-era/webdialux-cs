@@ -1,4 +1,5 @@
 // Tạo báo cáo PDF kiểu DIALux cho 1 tuyến/phương án.
+import { VERSION } from "./version.mjs";
 // Phần thuần dữ liệu (reportData) test được ở Node; phần vẽ canvas + jsPDF chạy ở trình duyệt.
 
 /** Mã bộ đèn (Article No.) từ [LUMCAT] + [LAMP], khử lặp khi một bên đã chứa bên kia. */
@@ -509,7 +510,7 @@ export function finalizeDoc(doc) {
   for (let i = 1; i <= n; i++) {
     doc.setPage(i);
     doc.setFontSize(7.5); doc.setTextColor(120, 130, 145);
-    doc.text("© 2026 maivulam · WebDialux-CS v1.1 · engine CIE 140 · bảng R3 CIE · TI theo Stiles-Holladay (xấp xỉ)", 14, 290);
+    doc.text(`© 2026 maivulam · WebDialux-CS ${VERSION} · engine CIE 140 · bảng R3 CIE · TI theo Stiles-Holladay (xấp xỉ)`, 14, 290);
     doc.text(`Trang ${i}/${n}`, 196, 290, { align: "right" });
     doc.setTextColor(30, 30, 40);
   }
