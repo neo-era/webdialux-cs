@@ -21,6 +21,13 @@ export function parseIES(text) {
   }
   if (tiltIdx === -1) throw new Error("IES không hợp lệ: thiếu dòng TILT=");
 
+  // Keyword header IESNA: [MANUFAC], [LUMCAT], [LUMINAIRE]... (trước dòng TILT)
+  const keywords = {};
+  for (let i = 0; i < tiltIdx; i++) {
+    const m = raw[i].match(/^\s*\[([^\]]+)\]\s*(.*)$/);
+    if (m) keywords[m[1].toUpperCase().trim()] = m[2].trim();
+  }
+
   const tiltSpec = raw[tiltIdx].split("=")[1].trim().toUpperCase();
   let cursor = tiltIdx + 1;
   if (tiltSpec !== "NONE") {
@@ -78,6 +85,7 @@ export function parseIES(text) {
     width, length, height,
     nV, nH, vAngles, hAngles, candela,
     totalLumens: (lumensPerLamp > 0 ? lumensPerLamp * numLamps : null),
+    keywords, manufac: keywords.MANUFAC || keywords.MANUFACTURER || null,
   };
 }
 

@@ -4,7 +4,7 @@ import { readFileSync, readdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { rowToGeometry, matchIES, modelKeyword, powerFromName, normKey, classifyRoadClass, classifyFromType, COLS } from "../src/mapping.mjs";
-import { buildIesIndex, runBatch, selectLowestPassing } from "../src/batch.mjs";
+import { buildIesIndex, runBatch, selectLowestPassing, runBatchRanked } from "../src/batch.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const iesDir = join(here, "../data/ies");
@@ -132,6 +132,28 @@ test("selectLowestPassing: chọn công suất nhỏ nhất vẫn Đạt", () =>
       // không bắt buộc, nhưng đèn nhỏ hơn không được vừa cùng model vừa Đạt rõ ràng
       assert.ok(true);
     }
+  }
+});
+
+test("runBatchRanked: mỗi tuyến liệt kê nhiều bộ đèn, chấm điểm & chọn tối ưu", () => {
+  const rows = [
+    { [COLS.stt]: 1, [COLS.H]: 7.5, [COLS.vuon]: 1.5, [COLS.setback]: 0.5, [COLS.width]: 7, [COLS.spacing]: 35, [COLS.tilt]: 15, [COLS.arrangement]: "1 bên", [COLS.lanes]: 2, [COLS.dpc]: "không" },
+  ];
+  const res = runBatchRanked(rows, idx, { MF: 0.8 });
+  const r = res[0];
+  assert.equal(r.status, "ok");
+  assert.ok(r.options.length >= 2, "liệt kê nhiều bộ đèn");
+  assert.ok(r.req && r.req.Ltb > 0, "có ngưỡng yêu cầu theo cấp");
+  // mỗi phương án có đủ thông số
+  assert.ok(r.options.every((o) => o.iesName && o.power != null && typeof o.pass === "boolean"));
+  const passed = r.options.filter((o) => o.pass);
+  if (passed.length) {
+    // có đúng 1 bộ được chọn, và là hạng 1
+    assert.equal(r.options.filter((o) => o.chosen).length, 1);
+    assert.equal(r.chosen.rank, 1);
+    // phần đạt đứng trước phần rớt
+    const firstFailIdx = r.options.findIndex((o) => !o.pass);
+    if (firstFailIdx >= 0) assert.ok(r.options.slice(0, firstFailIdx).every((o) => o.pass));
   }
 });
 

@@ -2,8 +2,9 @@
 import { parseIES } from "./ies.mjs";
 import { calcRoad } from "./engine.mjs";
 import { rowToGeometry, matchIES, modelKeyword, powerFromName } from "./mapping.mjs";
+import { scoreOptions } from "./scoring.mjs";
 
-/** files: [{name, text}] -> chỉ mục [{name, model, power, ph}] */
+/** files: [{name, text}] -> chỉ mục [{name, model, power, manufac, ph}] */
 export function buildIesIndex(files) {
   const idx = [];
   for (const f of files) {
@@ -13,6 +14,7 @@ export function buildIesIndex(files) {
         name: f.name,
         model: modelKeyword(f.name),
         power: powerFromName(f.name) ?? (ph.inputWatts ? Math.round(ph.inputWatts) : null),
+        manufac: ph.manufac || null,
         ph,
       });
     } catch (e) { /* bỏ file IES hỏng */ }
@@ -92,6 +94,58 @@ function emit(base, chosen, { autoSelect, note }) {
     Ltb: r.road.Lav, Uo: r.road.Uo, Ul: r.road.Ul, TI: r.road.TI, SR: r.road.SR,
     En: r.E.avg, pass: r.pass, checks: r.checks, req: r.req, roadClass: r.roadClass,
   };
+}
+
+/**
+ * ĐA PHƯƠNG ÁN: mỗi tuyến tính TẤT CẢ bộ đèn trong thư viện, chấm điểm & xếp hạng.
+ * Trả mỗi tuyến: { base, req, options[] } — options gồm cả đạt/không đạt,
+ * phần ĐẠT được chấm điểm (scoreOptions) & xếp hạng, rank 1 = đèn tối ưu (chosen).
+ * options[i]: { iesName, model, manufac, power, Ltb,Uo,Ul,TI,SR,En, pass,
+ *               d_Ltb..d_SR, tong1, tong2, diemXet, rank, chosen }
+ */
+export function runBatchRanked(rows, iesIndex, opts = {}) {
+  const { MF = 0.8, rfn } = opts;
+  const cands = iesIndex.filter((e) => e.power != null);
+  return rows.map((row) => {
+    const g = rowToGeometry(row);
+    const base = {
+      stt: g.meta.stt, tuyen: g.meta.tuyen, warnings: g.warnings,
+      autoClass: g.autoClass, classSource: g.classSource, roadClass: g.input.roadClass,
+      input: g.input, meta: g.meta,
+    };
+    if (g.input.H == null || g.input.width == null || g.input.spacing == null) {
+      return { ...base, status: "thiếu hình học", reason: g.warnings.join("; "), options: [] };
+    }
+    // nếu dòng CHỈ ĐỊNH model -> chỉ xét các IES cùng model; không thì xét tất cả hãng
+    const mk = modelKeyword(g.meta.model) || modelKeyword(g.meta.fitting);
+    const pool = mk ? cands.filter((e) => e.model === mk) : cands;
+    if (pool.length === 0) return { ...base, status: "thiếu IES", reason: "không có IES phù hợp", options: [] };
+
+    const raw = [];
+    let req = null;
+    for (const c of pool) {
+      try {
+        const r = calcRoad({ ies: c.ph, ...g.input, MF, ...(rfn ? { rfn } : {}) });
+        req = r.req;
+        raw.push({
+          iesName: c.name, model: c.model, manufac: c.manufac, power: c.power,
+          Ltb: r.road.Lav, Uo: r.road.Uo, Ul: r.road.Ul, TI: r.road.TI, SR: r.road.SR,
+          En: r.E.avg, pass: r.pass,
+        });
+      } catch (_) { /* bỏ ứng viên lỗi */ }
+    }
+    if (raw.length === 0) return { ...base, status: "lỗi tính", reason: "không tính được bộ đèn nào", options: [] };
+
+    const options = scoreOptions(raw)
+      .sort((a, b) => {
+        if (a.pass !== b.pass) return a.pass ? -1 : 1;       // đạt lên trước
+        if (a.pass) return (a.rank ?? 1e9) - (b.rank ?? 1e9); // trong nhóm đạt: theo hạng
+        return (a.power ?? 1e9) - (b.power ?? 1e9);          // nhóm rớt: theo công suất
+      });
+    const chosen = options.find((o) => o.chosen) || null;
+    const anyPass = options.some((o) => o.pass);
+    return { ...base, status: "ok", req, options, chosen, pass: anyPass };
+  });
 }
 
 /** Tự dò theo tuyến (gộp theo STT) — giữ tương thích CLI cũ. */

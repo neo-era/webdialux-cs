@@ -66,6 +66,8 @@ tr:last-child td{border-bottom:none}
 .pill.na{background:var(--warn-bg);color:var(--warn)}
 .auto{color:var(--accent);font-weight:700;margin-left:3px;cursor:help}
 .legend{font-size:12px;color:var(--muted);margin:8px 2px 0}
+tr.chosen td{background:var(--ok-bg)}
+tr.chosen td.t:first-child,tr.chosen td{font-weight:500}
 .bad{color:var(--fail)} .empty{padding:40px;text-align:center;color:var(--muted)}
 .note{font-size:12px;color:var(--muted);margin-top:12px}
 .owner{margin-top:20px;padding-top:12px;border-top:1px solid var(--line);text-align:center;color:var(--muted);font-size:12px}
@@ -96,7 +98,7 @@ a{color:var(--accent)}
       <button id="btnIes">📁 Chọn thư mục IES</button>
       <label class="opt">MF <input type="number" id="mf" value="0.8" step="0.05" min="0.3" max="1"></label>
       <label class="opt">Chế độ
-        <select id="mode"><option value="each">Từng phương án</option><option value="auto">Tự dò (CS nhỏ nhất Đạt)</option></select>
+        <select id="mode"><option value="rank">Đa phương án (chấm điểm &amp; chọn tối ưu)</option><option value="each">Từng phương án (1 đèn/dòng)</option></select>
       </label>
       <button id="btnRun" class="primary" disabled>▶ Chạy</button>
       <button id="btnSave" disabled>💾 Ghi/Tải Excel</button>
@@ -130,8 +132,8 @@ a{color:var(--accent)}
   <div class="tablewrap" id="tablewrap" hidden>
     <table id="tbl">
       <thead><tr>
-        <th class="t">STT</th><th class="t">Tuyến</th><th>Cấp</th><th class="t">Đèn</th><th>CS</th>
-        <th class="t">IES</th><th>Ltb</th><th>Uo</th><th>Ul</th><th>TI</th><th>SR</th><th>Kết quả</th>
+        <th class="t">STT</th><th class="t">Tuyến</th><th>Cấp</th><th class="t">Đèn</th><th class="t">Hãng</th><th>CS</th>
+        <th>Ltb</th><th>Uo</th><th>Ul</th><th>TI</th><th>SR</th><th>Điểm</th><th>Hạng</th><th>Kết quả</th>
       </tr></thead>
       <tbody id="tbody"></tbody>
     </table>
@@ -177,8 +179,8 @@ a{color:var(--accent)}
 
     <h3>3. Hai chế độ tính</h3>
     <ul>
-      <li><b>Từng phương án</b>: tính đúng bộ đèn ghi trên mỗi dòng. Dùng chế độ này để <b>ghi kết quả vào Excel</b>.</li>
-      <li><b>Tự dò</b>: với mỗi tuyến, tự chọn đèn cùng model có <b>công suất nhỏ nhất vẫn Đạt</b> (tối ưu điện năng).</li>
+      <li><b>Đa phương án (chấm điểm &amp; chọn tối ưu)</b> — mặc định: với mỗi tuyến, app tính <b>tất cả bộ đèn trong thư mục IES</b> (nhiều hãng), liệt kê mỗi bộ một dòng, chấm điểm (Borda theo Ltb/Uo/Ul/TI/SR, tổng điểm lần 1 &amp; 2) và <b>đánh dấu ✓ đèn tối ưu</b> = công suất nhỏ nhất vẫn Đạt. Nếu dòng có ghi sẵn Loại đèn thì chỉ xét các bộ cùng model đó. Ghi/Tải Excel ra bảng chấm điểm nhiều dòng/tuyến đủ cột (YC, điểm, hạng, chọn).</li>
+      <li><b>Từng phương án (1 đèn/dòng)</b>: chỉ tính đúng bộ đèn trên mỗi dòng (hoặc tự chọn nếu dòng để trống Loại đèn) — mỗi dòng 1 kết quả.</li>
     </ul>
 
     <h3>4. Ghi file &amp; lưu ý</h3>
@@ -205,7 +207,7 @@ a{color:var(--accent)}
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script type="module">
-import { buildIesIndex, runBatch, autoFind } from "./src/batch.mjs";
+import { buildIesIndex, runBatch, runBatchRanked } from "./src/batch.mjs";
 import { COLS, rowToGeometry, matchIES } from "./src/mapping.mjs";
 import { calcRoad } from "./src/engine.mjs";
 import { makeIntensity } from "./src/ies.mjs";
@@ -277,18 +279,23 @@ $("btnRun").onclick = () => {
   resultMode=$("mode").value;
   const t0=performance.now();
   try{
-    if(resultMode==="auto"){ results=autoFind(rows,iesIndex,{MF}); }
+    if(resultMode==="rank"){ results=runBatchRanked(rows,iesIndex,{MF}); }
     else { results=runBatch(rows,iesIndex,{MF}); }
   }catch(e){ setStatus("Lỗi khi chạy: "+e.message,true); return; }
   const ms=Math.round(performance.now()-t0);
   render();
-  setStatus(`Đã tính ${results.length} dòng trong ${ms} ms.`);
+  const extra = resultMode==="rank" ? ` · ${results.reduce((n,r)=>n+(r.options?r.options.length:0),0)} lượt tính đèn` : "";
+  setStatus(`Đã tính ${results.length} tuyến trong ${ms} ms${extra}.`);
   $("btnSave").disabled=false; $("btnPdf").disabled=false;
 };
 
+const isRanked = () => resultMode==="rank";
+
 function summarize(){
   let tinh=0,dat=0,fail=0,thieu=0;
-  for(const r of results){ if(r.status==="ok"){tinh++; r.pass?dat++:fail++;} else thieu++; }
+  for(const r of results){
+    if(r.status==="ok"){ tinh++; (r.pass)?dat++:fail++; } else thieu++;
+  }
   return {tong:results.length,tinh,dat,fail,thieu};
 }
 function render(){
@@ -308,34 +315,123 @@ function matchFilter(r){
   return true;
 }
 function visibleIndices(){ const out=[]; results.forEach((r,i)=>{ if(matchFilter(r)) out.push(i); }); return out; }
+
+const cleanIes = (s)=>String(s||"").replace(/_IESNA2002\.IES$/i,"").replace(/\.ies$/i,"");
+const cell=(v,bad)=>`<td class="num${bad?" bad":""}">${v}</td>`;
+const autoMark=(txt,on,tip)=>on?`${txt}<span class="auto" title="${tip}">•</span>`:(txt||"");
+
 function drawRows(){
   const tb=$("tbody"); tb.innerHTML="";
+  if(isRanked()) return drawRowsRanked(tb);
   for(const i of visibleIndices()){
     const r=results[i];
-    const tr=document.createElement("tr");
-    let kq;
-    if(r.status!=="ok") kq=`<span class="pill na">${r.status}</span>`;
-    else kq=`<span class="pill ${r.pass?"ok":"fail"}">${r.pass?"ĐẠT":"KHÔNG ĐẠT"}</span>`;
-    const cell=(v,bad)=>`<td class="num${bad?" bad":""}">${v}</td>`;
-    const auto=(txt,on,tip)=>on?`${txt}<span class="auto" title="${tip}">•</span>`:(txt||"");
+    let kq = r.status!=="ok" ? `<span class="pill na">${r.status}</span>`
+      : `<span class="pill ${r.pass?"ok":"fail"}">${r.pass?"ĐẠT":"KHÔNG ĐẠT"}</span>`;
     const clsTip = r.classSource==="loại tuyến" ? "Cấp đường quy đổi từ cột 'Loại tuyến'" : "Cấp đường app tự xác định từ hình học";
+    const tr=document.createElement("tr");
     tr.innerHTML=`<td class="t num">${r.stt??""}</td><td class="t">${r.tuyen??""}</td>`+
-      `<td class="num">${auto(r.roadClass||"",r.autoClass,clsTip)}</td>`+
-      `<td class="t">${r.model||""}</td><td class="num">${r.power??""}</td>`+
-      `<td class="t">${auto((r.iesName||r.chon||"").replace(/_IESNA2002\.IES$/i,""),r.autoSelect,"Bộ đèn do app tự chọn (công suất nhỏ nhất vẫn Đạt)")}</td>`+
+      `<td class="num">${autoMark(r.roadClass||"",r.autoClass,clsTip)}</td>`+
+      `<td class="t">${r.model||""}</td><td class="t">${r.manufac||""}</td><td class="num">${r.power??""}</td>`+
       (r.status==="ok"?
-        cell(fmt(r.Ltb))+cell(fmt(r.Uo))+cell(fmt(r.Ul))+cell(fmt(r.TI,0))+cell(fmt(r.SR)):
-        `<td colspan="5" class="t" style="color:var(--muted)">${r.reason||""}</td>`)+
+        cell(fmt(r.Ltb))+cell(fmt(r.Uo))+cell(fmt(r.Ul))+cell(fmt(r.TI,0))+cell(fmt(r.SR))+`<td></td><td></td>`:
+        `<td colspan="7" class="t" style="color:var(--muted)">${r.reason||""}</td>`)+
       `<td class="t">${kq}</td>`;
     tb.appendChild(tr);
   }
 }
+
+function drawRowsRanked(tb){
+  for(const i of visibleIndices()){
+    const r=results[i];
+    const clsTip = r.classSource==="loại tuyến" ? "Cấp đường quy đổi từ cột 'Loại tuyến'" : "Cấp đường app tự xác định từ hình học";
+    if(r.status!=="ok"){
+      const tr=document.createElement("tr"); tr.className="route-head";
+      tr.innerHTML=`<td class="t num">${r.stt??""}</td><td class="t">${r.tuyen??""}</td>`+
+        `<td class="num">${autoMark(r.roadClass||"",r.autoClass,clsTip)}</td>`+
+        `<td class="t" colspan="10" style="color:var(--muted)">${r.status}: ${r.reason||""}</td>`+
+        `<td class="t"><span class="pill na">${r.status}</span></td>`;
+      tb.appendChild(tr); continue;
+    }
+    const opts=r.options||[];
+    opts.forEach((o,k)=>{
+      const tr=document.createElement("tr");
+      if(o.chosen) tr.className="chosen";
+      // cột định danh tuyến chỉ in ở dòng đầu
+      const head = k===0;
+      const stt = head ? (r.stt??"") : "";
+      const tuyen = head ? (r.tuyen??"") : "";
+      const cls = head ? autoMark(r.roadClass||"",r.autoClass,clsTip) : "";
+      const rankCell = o.pass ? (o.chosen?`<b>${o.rank} ◀</b>`:o.rank) : "—";
+      const kq = `<span class="pill ${o.pass?"ok":"fail"}">${o.pass?"ĐẠT":"rớt"}</span>`;
+      const bad = (v,ok)=>!ok;
+      tr.innerHTML=`<td class="t num">${stt}</td><td class="t">${tuyen}</td><td class="num">${cls}</td>`+
+        `<td class="t">${o.model||cleanIes(o.iesName)}</td><td class="t">${o.manufac||""}</td><td class="num">${o.power??""}</td>`+
+        cell(fmt(o.Ltb),!o.pass)+cell(fmt(o.Uo))+cell(fmt(o.Ul))+cell(fmt(o.TI,0))+cell(fmt(o.SR))+
+        `<td class="num">${o.tong1!=null?o.tong1:"—"}</td>`+
+        `<td class="num">${rankCell}</td>`+
+        `<td class="t">${kq}</td>`;
+      tb.appendChild(tr);
+    });
+  }
+}
 $("flt").onchange=drawRows; $("q").oninput=drawRows;
 
-// ---- Ghi/Tải kết quả ----
+// ---- Ghi/Tải kết quả: chế độ ĐA PHƯƠNG ÁN (chấm điểm) -> bảng nhiều dòng/tuyến ----
+async function saveRanked(){
+  try{
+    const n2=(x)=>x==null?"":+(+x).toFixed(2);
+    const n0=(x)=>x==null?"":Math.round(x);
+    const n1=(x)=>x==null?"":+(+x).toFixed(1);
+    const HEAD=[
+      "STT","Tuyến đường","Độ cao bộ đèn (m)","Độ vươn cần đèn (m)","Góc nghiêng (độ)",
+      "Độ rộng lòng đường (m)","Khoảng cột (m)","Setback (m)","Cách bố trí","Dải phân cách","Số làn",
+      "Loại tuyến","Cấp đường","Nguồn cấp đường","Ltb YC","Uo YC","Ul YC","TI YC (%)","SR YC",
+      "Loại đèn","Hãng","Công suất (W)","File IES","Ltb KQ","Uo KQ","Ul KQ","TI KQ (%)","SR KQ","En KQ (lx)",
+      "Kết quả","Điểm Ltb","Điểm Uo","Điểm Ul","Điểm TI","Điểm SR","Tổng điểm lần 1","Tổng điểm lần 2","Xếp hạng","Chọn",
+      "Đèn tối ưu (hạng 1)","Công suất chọn (W)","Hãng chọn",
+    ];
+    const srcLbl=(cs)=>cs==="loại tuyến"?"quy đổi từ loại tuyến":cs==="hình học"?"tự xác định (hình học)":"nhập trực tiếp";
+    const aoa=[HEAD];
+    for(const r of results){
+      const g=r.input||{}; const req=r.req||{};
+      const meta=r.meta||{};
+      if(r.status!=="ok"){
+        aoa.push([r.stt??"",r.tuyen??"", n2(g.H),n2(g.overhang),n0(g.tilt),n2(g.width),n2(g.spacing),"", g.arrangement||"", "", g.lanes||"",
+          meta.loaituyen||"", r.roadClass||"", srcLbl(r.classSource), "","","","","",
+          "","","","", "","","","","","", r.status, "","","","","","","","", "", "","",""]);
+        continue;
+      }
+      const opts=r.options||[]; const chosen=r.chosen;
+      opts.forEach((o,k)=>{
+        const head=k===0;
+        aoa.push([
+          head?(r.stt??""):"", head?(r.tuyen??""):"",
+          head?n2(g.H):"", head?n2(g.overhang):"", head?n0(g.tilt):"",
+          head?n2(g.width):"", head?n2(g.spacing):"", "", head?(g.arrangement||""):"", "", head?(g.lanes||""):"",
+          head?(meta.loaituyen||""):"", head?(r.roadClass||""):"", head?srcLbl(r.classSource):"",
+          head?n2(req.Ltb):"", head?n2(req.Uo):"", head?n2(req.Ul):"", head?n0(req.TI):"", head?n2(req.SR):"",
+          o.model||"", o.manufac||"", o.power??"", cleanIes(o.iesName),
+          n2(o.Ltb),n2(o.Uo),n2(o.Ul),n0(o.TI),n2(o.SR),n1(o.En),
+          o.pass?"ĐẠT":"KHÔNG ĐẠT",
+          o.d_Ltb??"",o.d_Uo??"",o.d_Ul??"",o.d_TI??"",o.d_SR??"",o.tong1??"",o.tong2??"",o.rank??"", o.chosen?"✓":"",
+          (head&&chosen)?(chosen.model||cleanIes(chosen.iesName)):"", (head&&chosen)?(chosen.power??""):"", (head&&chosen)?(chosen.manufac||""):"",
+        ]);
+      });
+    }
+    const ws=XLSX.utils.aoa_to_sheet(aoa);
+    ws["!cols"]=HEAD.map(h=>({wch:Math.min(Math.max(String(h).length+1,6),22)}));
+    const wbOut=XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wbOut,ws,"Chấm điểm & chọn đèn");
+    const out=XLSX.write(wbOut,{bookType:"xlsx",type:"array"});
+    await saveXlsxBuffer(out,"KET_QUA_CHAM_DIEM_WEBDIALUX.xlsx");
+    const tong=results.reduce((n,r)=>n+((r.options||[]).length),0);
+    setStatus(`Đã tạo bảng chấm điểm (${results.length} tuyến · ${tong} dòng đèn): mỗi tuyến liệt kê các bộ đèn, chấm điểm & đánh dấu ✓ đèn tối ưu.`);
+  }catch(e){ setStatus("Lỗi ghi Excel: "+e.message,true); }
+}
+
 $("btnSave").onclick = async () => {
   if(!results){ return; }
-  if(resultMode==="auto"){ setStatus("Chế độ 'Tự dò' gộp theo tuyến. Hãy chạy ở chế độ 'Từng phương án' rồi ghi (mỗi dòng 1 kết quả).",true); return; }
+  if(isRanked()){ await saveRanked(); return; }
   try{
     const ws=wb.Sheets[sheetName];
     const ref=XLSX.utils.decode_range(ws["!ref"]);
@@ -413,18 +509,20 @@ $("btnPdf").onclick = async () => {
     let doc=null, made=0;
     for(const i of idxs){
       const row=rows[i]; const g=rowToGeometry(row); const res=results[i];
-      // bộ đèn: dùng đúng IES mà bước tính đã chọn (iesName), không khớp lại theo model
-      let e = res && res.iesName ? byName.get(res.iesName) : null;
+      // bộ đèn: ưu tiên bộ đã chọn/đã tính (ranked: chosen; each: iesName)
+      const pickName = res && (res.chosen ? res.chosen.iesName : (res.iesName || ((res.options||[])[0]||{}).iesName));
+      let e = pickName ? byName.get(pickName) : null;
       if(!e){ const m=matchIES(g.meta, iesIndex); e=m.ies; }
       if(!e) continue;
       // cấp đường: dùng cấp đã xác định ở bước tính (có thể là cấp tự phân)
       const input={...g.input, roadClass: (res&&res.roadClass)||g.input.roadClass, MF, detail:true};
       let result; try{ result=calcRoad({ies:e.ph, ...input}); }catch(_){ continue; }
       if(!doc) doc=makeDoc({jsPDF,font}); else doc.addPage();
+      const autoSel = (res&&res.autoSelect) || (isRanked() && !g.meta.model);
       renderRoadPage(doc,{input,result,ph:e.ph,makeIntensity,
         meta:{tuyen:g.meta.tuyen,model:g.meta.model||e.model||"",fitting:g.meta.fitting,
-              power:g.meta.power??e.power,ncc:g.meta.ncc,iesName:e.name,
-              autoClass:res&&res.autoClass,autoSelect:res&&res.autoSelect,
+              power:g.meta.power??e.power,ncc:g.meta.ncc||e.manufac,iesName:e.name,
+              autoClass:res&&res.autoClass,autoSelect:autoSel,
               classSource:res&&res.classSource}});
       made++;
     }

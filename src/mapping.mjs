@@ -96,6 +96,7 @@ export function rowToGeometry(row) {
       model: (row[COLS.model] || "").toString().trim(),
       fitting: (row[COLS.fitting] || "").toString().trim(),
       power: num(row[COLS.power]), ncc: row[COLS.ncc], autoClass, classSource,
+      loaituyen: (row[COLS.loaituyen] || "").toString().trim(),
     },
   };
 }
