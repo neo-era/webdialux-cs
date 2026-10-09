@@ -194,7 +194,7 @@ a{color:var(--accent)}
 
     <h3>4. Ghi file &amp; lưu ý</h3>
     <ul>
-      <li>Trên <b>Chrome/Edge</b> (GitHub Pages hoặc chạy bằng local server): ghi đè thẳng file <code>.xlsx</code> gốc. File <code>.xlsm</code> sẽ xuất ra file mới để không hỏng macro.</li>
+      <li>Kết quả luôn tải về dạng <b>file mới</b>: <code>WebDialux_KetQua_&lt;tên file dữ liệu&gt;_&lt;YYYYMMDD-HHMM&gt;.xlsx</code>, PDF: <code>WebDialux_BaoCao_&lt;tuyến&gt;_&lt;YYYYMMDD-HHMM&gt;.pdf</code>; file Excel gốc không bị thay đổi.</li>
       <li>Trong khung xem trước có thể bị chặn tải — mở app ở <code>neo-era.github.io/webdialux-cs/</code> hoặc local là ghi/tải mượt.</li>
       <li>Dòng "Thiếu IES" = chưa có file .ies khớp model+công suất → bổ sung vào thư mục IES.</li>
       <li><b>Độ chói</b> dùng bảng R3 CIE (khớp DIALux cho Ltb &amp; Uo). <b>TI</b> là ước tính, thiên an toàn — dùng tham khảo.</li>
@@ -408,7 +408,7 @@ async function saveRanked(){
       const q0sel = parseFloat($("q0").value) || 0.08, MFsel = parseFloat($("mf").value) || 0.8;
       const wbx = await buildResultWorkbook(window.ExcelJS, { results, rows, q0: q0sel, MF: MFsel, version: VERSION, date: new Date(), projectName: xlsxName.replace(/\.(xlsx|xlsm)$/i, "") });
       const buf = await wbx.xlsx.writeBuffer();
-      await saveXlsxBuffer(buf, "KET_QUA_WEBDIALUX_CHAM_DIEM.xlsx");
+      await saveXlsxBuffer(buf, outName("KetQua_ChamDiem", null, "xlsx"));
       const tong = results.reduce((n, r) => n + ((r.options || []).filter(o => o.pass).length), 0);
       setStatus(`Đã tạo file kết quả 3 sheet (Chấm điểm chi tiết · Tổng hợp đèn · Theo tuyến) — ${results.length} tuyến, ${tong} dòng đèn Đạt.`);
       return;
@@ -470,7 +470,7 @@ async function saveRanked(){
     const wbOut=XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wbOut,ws,"Chấm điểm & chọn đèn");
     const out=XLSX.write(wbOut,{bookType:"xlsx",type:"array"});
-    await saveXlsxBuffer(out,"KET_QUA_CHAM_DIEM_WEBDIALUX.xlsx");
+    await saveXlsxBuffer(out,outName("KetQua_ChamDiem", null, "xlsx"));
     const tong=results.reduce((n,r)=>n+((r.options||[]).length),0);
     setStatus(`Đã tạo bảng chấm điểm (${results.length} tuyến · ${tong} dòng đèn): mỗi tuyến liệt kê các bộ đèn, chấm điểm & đánh dấu ✓ đèn tối ưu.`);
   }catch(e){ setStatus("Lỗi ghi Excel: "+e.message,true); }
@@ -479,65 +479,40 @@ async function saveRanked(){
 $("btnSave").onclick = async () => {
   if(!results){ return; }
   if(isRanked()){ await saveRanked(); return; }
+  // Chế độ TỪNG PHƯƠNG ÁN: cũng xuất workbook 3 sheet (ExcelJS) như chế độ chấm điểm — luôn là FILE MỚI, không ghi lên file gốc
   try{
-    const ws=wb.Sheets[sheetName];
-    const ref=XLSX.utils.decode_range(ws["!ref"]);
-    // tìm cột kết quả theo tiêu đề (hàng đầu)
-    const hdr={};
-    for(let c=ref.s.c;c<=ref.e.c;c++){ const cell=ws[XLSX.utils.encode_cell({r:ref.s.r,c})]; if(cell&&cell.v!=null) hdr[String(cell.v).trim()]=c; }
-    const resultCols=["Ltb KQ (cd/m²)","Uo KQ","Ul KQ","TI KQ (%)","SR KQ","En KQ (lx)","Kết quả"];
-    const matched=resultCols.filter(n=>hdr[n]!=null);
-
-    if(matched.length>0){
-      // (A) File gốc ĐÃ CÓ cột kết quả -> ghi tại đúng hàng thật (giữ nguyên bố cục)
-      const put=(rowNum,colName,val)=>{ const c=hdr[colName]; if(c==null||val==null)return; ws[XLSX.utils.encode_cell({r:rowNum,c})]={t:typeof val==="number"?"n":"s",v:val}; };
-      results.forEach((r,i)=>{ if(r.status!=="ok")return; const rn=rows[i].__rowNum__; if(rn==null)return;
-        put(rn,"Ltb KQ (cd/m²)",+r.Ltb.toFixed(2)); put(rn,"Uo KQ",+r.Uo.toFixed(2)); put(rn,"Ul KQ",+r.Ul.toFixed(2));
-        put(rn,"TI KQ (%)",+r.TI.toFixed(0)); put(rn,"SR KQ",+r.SR.toFixed(2)); put(rn,"En KQ (lx)",+r.En.toFixed(1));
-        put(rn,"Kết quả",r.pass?"ĐẠT":"KHÔNG ĐẠT");
-      });
-      const out=XLSX.write(wb,{bookType:"xlsx",type:"array"});
-      const canOverwrite = hasFSA && xlsxHandle && /\.xlsx$/i.test(xlsxHandle.name||"");
-      if(canOverwrite){
-        try{ const w=await xlsxHandle.createWritable(); await w.write(out); await w.close(); setStatus(`Đã ghi ${matched.length} cột kết quả vào file Excel gốc.`); return; }
-        catch(_){ /* rơi xuống tải */ }
-      }
-      const blob=new Blob([out],{type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"});
-      const a=Object.assign(document.createElement("a"),{href:URL.createObjectURL(blob),download:"KET_QUA_WEBDIALUX.xlsx"});
-      document.body.appendChild(a); a.click(); a.remove();
-      setStatus("Đã tạo file KET_QUA_WEBDIALUX.xlsx để tải (file .xlsm giữ nguyên tránh hỏng macro).");
+    const q0sel=parseFloat($("q0").value)||0.08, MFsel=parseFloat($("mf").value)||0.8;
+    if (window.ExcelJS) {
+      const { buildResultWorkbook, toRankedShape } = await import("./src/xlsxpro.mjs");
+      const shaped = toRankedShape(results, rows, iesIndex);
+      const wbx = await buildResultWorkbook(window.ExcelJS, { results: shaped, rows, q0: q0sel, MF: MFsel, version: VERSION, date: new Date(), projectName: xlsxName.replace(/\.(xlsx|xlsm)$/i, "") });
+      await saveXlsxBuffer(await wbx.xlsx.writeBuffer(), outName("KetQua", null, "xlsx"));
+      const dat=results.filter(r=>r.status==="ok"&&r.pass).length;
+      setStatus(`Đã tạo file kết quả (3 sheet) — ${results.length} tuyến, ${dat} tuyến ĐẠT. File gốc giữ nguyên.`);
       return;
     }
-
-    // (B) File gốc CHỈ CÓ hình học -> dựng BẢNG KẾT QUẢ ĐẦY ĐỦ (cột gốc + cột app tính thêm)
-    // Lấy đúng thứ tự tiêu đề gốc từ hàng đầu của sheet
+    // Dự phòng (không tải được ExcelJS): bảng phẳng SheetJS = cột gốc + cột app tính thêm
+    const ws=wb.Sheets[sheetName]; const ref=XLSX.utils.decode_range(ws["!ref"]);
     const srcHead=[];
     for(let c=ref.s.c;c<=ref.e.c;c++){ const cell=ws[XLSX.utils.encode_cell({r:ref.s.r,c})]; srcHead.push(cell&&cell.v!=null?String(cell.v).trim():""); }
-    const addHead=["Cấp đường","Nguồn cấp đường","Bộ đèn chọn","Công suất (W)",
-                   "Ltb (cd/m²)","Uo","Ul","TI (%)","SR","En (lx)","Kết quả","Ghi chú"];
+    const addHead=["Cấp đường","Nguồn cấp đường","Bộ đèn chọn","Công suất (W)","Ltb (cd/m²)","Uo","Ul","TI (%)","SR","En (lx)","Kết quả","Ghi chú"];
     const srcLbl=(cs)=>cs==="loại tuyến"?"quy đổi từ loại tuyến":cs==="hình học"?"tự xác định (hình học)":"nhập trực tiếp";
     const aoa=[[...srcHead,...addHead]];
     results.forEach((r,i)=>{
       const src=srcHead.map(h=>{ const v=rows[i][h]; return v==null?"":v; });
-      let extra;
-      if(r.status==="ok"){
-        const ghichu=[r.autoSelect?"bộ đèn do app tự chọn":"", (!r.pass?"":"")].filter(Boolean).join("; ");
-        extra=[ r.roadClass, srcLbl(r.classSource), (r.chon||r.iesName||"").replace(/_IESNA2002\.IES$/i,""),
-                r.power??"", +r.Ltb.toFixed(2), +r.Uo.toFixed(2), +r.Ul.toFixed(2),
-                +r.TI.toFixed(0), +r.SR.toFixed(2), +r.En.toFixed(1), r.pass?"ĐẠT":"KHÔNG ĐẠT", ghichu ];
-      } else {
-        extra=[ r.roadClass||"", srcLbl(r.classSource), "", "", "", "", "", "", "", "", r.status, r.reason||"" ];
-      }
+      const extra = r.status==="ok"
+        ? [ r.roadClass, srcLbl(r.classSource), (r.chon||r.iesName||"").replace(/_IESNA2002\.IES$/i,""), r.power??"",
+            +r.Ltb.toFixed(2), +r.Uo.toFixed(2), +r.Ul.toFixed(2), +r.TI.toFixed(0), +r.SR.toFixed(2), +r.En.toFixed(1),
+            r.pass?"ĐẠT":"KHÔNG ĐẠT", r.autoSelect?"bộ đèn do app tự chọn":"" ]
+        : [ r.roadClass||"", srcLbl(r.classSource), "", "", "", "", "", "", "", "", r.status, r.reason||"" ];
       aoa.push([...src,...extra]);
     });
     const wsOut=XLSX.utils.aoa_to_sheet(aoa);
     wsOut["!cols"]=aoa[0].map(h=>({wch:Math.min(Math.max(String(h).length+2,8),26)}));
-    const wbOut=XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wbOut,wsOut,"Kết quả");
-    const out=XLSX.write(wbOut,{bookType:"xlsx",type:"array"});
-    await saveXlsxBuffer(out,"KET_QUA_WEBDIALUX.xlsx");
-    setStatus(`Đã tạo bảng kết quả đầy đủ (${results.length} dòng): cấp đường tự xác định, bộ đèn tự chọn, các chỉ số & kết luận Đạt/Không đạt.`);
-  }catch(e){ setStatus("Lỗi ghi Excel: "+e.message,true); }
+    const wbOut=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wbOut,wsOut,"Kết quả");
+    await saveXlsxBuffer(XLSX.write(wbOut,{bookType:"xlsx",type:"array"}),outName("KetQua", null, "xlsx"));
+    setStatus(`Đã tạo file kết quả (${results.length} tuyến). File gốc giữ nguyên.`);
+  }catch(e){ setStatus("Lỗi xuất Excel: "+e.message,true); }
 };
 
 // ---- Xuất PDF kiểu DIALux (các tuyến đang lọc, 1 trang/tuyến) ----
@@ -576,7 +551,7 @@ $("btnPdf").onclick = async () => {
       made++;
     }
     if(!doc){ setStatus("Không tạo được trang PDF nào (thiếu IES khớp).",true); return; }
-    const name = made===1 ? `BaoCao_${String(rows[idxs[0]][COLS.tuyen]||"tuyen").replace(/[^\p{L}\p{N}]+/gu,"_")}.pdf` : `BaoCao_WebDialux_${made}tuyen.pdf`;
+    const name = made===1 ? outName("BaoCao", rows[idxs[0]][COLS.tuyen]||"tuyen", "pdf") : outName("BaoCao", `${made}_tuyen`, "pdf");
     finalizeDoc(doc); // chân trang © + Trang i/N cho mọi trang
     const blob = doc.output("blob");
     const a=Object.assign(document.createElement("a"),{href:URL.createObjectURL(blob),download:name});
@@ -592,6 +567,11 @@ $("btnMenu").onclick = (e) => { e.stopPropagation(); $("menu").hidden = !$("menu
 $("mHelp").onclick = () => { $("menu").hidden = true; $("guide").hidden = false; };
 
 // ---- Tải Excel mẫu ----
+
+// Tên file xuất chuyên nghiệp: WebDialux_<Loại>_<Dự án/Tuyến>_<YYYYMMDD-HHMM>.<ext>
+function stamp(d=new Date()){ const p=n=>String(n).padStart(2,"0"); return `${d.getFullYear()}${p(d.getMonth()+1)}${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}`; }
+function slug(t){ return String(t||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/đ/g,"d").replace(/Đ/g,"D").replace(/[^A-Za-z0-9]+/g,"_").replace(/^_+|_+$/g,"").slice(0,40); }
+function outName(kind, subject, ext){ return ["WebDialux",kind,slug(subject||xlsxName.replace(/\.(xlsx|xlsm)$/i,"")),stamp()].filter(Boolean).join("_")+"."+ext; }
 async function saveXlsxBuffer(out, name){
   // Luôn tải xuống như một file MỚI (thư mục Downloads) — không bao giờ ghi lên file Excel gốc người dùng đã mở
   const blob=new Blob([out],{type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"});

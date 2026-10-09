@@ -6,6 +6,31 @@
 // Sheet 3 "Theo tuyến"        : 1 dòng/tuyến với bộ đèn chọn + chỉ tiêu + kết luận.
 
 import { VERSION } from "./version.mjs";
+import { rowToGeometry } from "./mapping.mjs";
+
+/**
+ * Chuẩn hoá kết quả chế độ TỪNG PHƯƠNG ÁN (runBatch: 1 đèn/tuyến) về cùng hình dạng
+ * với chế độ ĐA PHƯƠNG ÁN (runBatchRanked: options[] + chosen) để dùng chung một workbook.
+ * Kết quả đã ở dạng ranked (có options) được trả nguyên.
+ */
+export function toRankedShape(results, rows = [], iesIndex = []) {
+  const byName = new Map(iesIndex.map((e) => [e.name, e]));
+  return results.map((r, i) => {
+    if (!r || Array.isArray(r.options)) return r;
+    const row = rows[i];
+    let g = null; try { g = row ? rowToGeometry(row) : null; } catch (_) { g = null; }
+    const base = { ...r, input: r.input || (g && g.input) || {}, meta: r.meta || (g && g.meta) || {} };
+    if (r.status !== "ok") return { ...base, options: [], chosen: null };
+    const e = byName.get(r.iesName || r.chon) || {};
+    const o = {
+      iesName: r.iesName || r.chon, model: r.model || e.model || null, manufac: e.manufac || null,
+      power: r.power ?? e.power ?? null, Ltb: r.Ltb, Uo: r.Uo, Ul: r.Ul, TI: r.TI, SR: r.SR, En: r.En,
+      pass: !!r.pass, d_Ltb: null, d_Uo: null, d_Ul: null, d_TI: null, d_SR: null, tong1: null, tong2: null,
+      rank: r.pass ? 1 : null, chosen: !!r.pass,
+    };
+    return { ...base, options: [o], chosen: r.pass ? o : null };
+  });
+}
 
 const C = {
   head: "FF1F4E79", headTxt: "FFFFFFFF", border: "FFD0D7E2", zebra: "FFF7F9FC",

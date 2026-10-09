@@ -64,3 +64,23 @@ test("buildResultWorkbook: 3 sheet, tiêu đề, header định dạng, dòng d�
   const buf = await wb.xlsx.writeBuffer();
   assert.ok(buf.byteLength > 5000);
 });
+
+test("toRankedShape: kết quả Từng phương án (runBatch) xuất được workbook 3 sheet", async () => {
+  const { runBatch } = await import("../src/batch.mjs");
+  const { toRankedShape } = await import("../src/xlsxpro.mjs");
+  const each = runBatch(rows, idx, { MF: 0.8, q0: 0.08 });
+  const shaped = toRankedShape(each, rows, idx);
+  assert.equal(shaped.length, each.length);
+  const ok = shaped.find((r) => r.status === "ok" && r.pass);
+  assert.ok(ok && ok.options.length === 1 && ok.chosen === ok.options[0] && ok.chosen.rank === 1, "1 option, chosen rank 1");
+  assert.ok(ok.chosen.manufac, "manufac tra từ iesIndex");
+  assert.ok(ok.input && ok.input.spacing, "input dựng từ rowToGeometry");
+  const thieu = shaped.find((r) => r.status !== "ok");
+  assert.deepEqual([thieu.options, thieu.chosen], [[], null]);
+  // ranked đưa vào trả nguyên
+  assert.equal(toRankedShape(results, rows, idx)[0], results[0]);
+  const wb = await buildResultWorkbook(ExcelJS, { results: shaped, rows, q0: 0.08, MF: 0.8 });
+  assert.equal(wb.worksheets.length, 3);
+  let tong = false; wb.getWorksheet("Tổng hợp đèn").eachRow((row) => { if (row.getCell(2).value === "TỔNG CỘNG") tong = true; });
+  assert.ok(tong);
+});
