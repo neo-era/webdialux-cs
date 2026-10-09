@@ -111,19 +111,54 @@ function viridis(t) {
   return `rgb(${Math.round(a[0]+(b[0]-a[0])*r)},${Math.round(a[1]+(b[1]-a[1])*r)},${Math.round(a[2]+(b[2]-a[2])*r)})`;
 }
 
-/** Ảnh false-color lưới độ rọi -> dataURL. */
-export function falseColorDataURL(result, doc = globalThis.document) {
-  const { xs, ys, g } = grid2D(result);
-  const min = result.E.min, max = result.E.max;
-  const cw = 24, ch = 24; // px mỗi ô
-  const cv = doc.createElement("canvas");
-  cv.width = xs.length * cw; cv.height = ys.length * ch;
-  const ctx = cv.getContext("2d");
-  for (let j = 0; j < ys.length; j++) for (let i = 0; i < xs.length; i++) {
-    const t = max > min ? (g[ys.length - 1 - j][i] - min) / (max - min) : 0.5; // y lớn ở trên
-    ctx.fillStyle = viridis(t);
-    ctx.fillRect(i * cw, j * ch, cw, ch);
+/**
+ * Ảnh false-color lưới độ rọi -> dataURL. Nội suy SONG TUYẾN giữa các điểm lưới
+ * (mịn, không còn ô vuông), độ phân giải cao, kèm thang màu lx bên phải.
+ * @param vals  mảng giá trị theo thứ tự grid.points (mặc định Evals; có thể truyền Lvals)
+ */
+export function falseColorDataURL(result, doc = globalThis.document, vals = result.Evals, label = "lx") {
+  const { xs, ys, g } = grid2D(result, vals);
+  let min = Infinity, max = -Infinity; for (const row of g) for (const v of row) { if (v < min) min = v; if (v > max) max = v; }
+  const nx = xs.length, ny = ys.length, S = result.grid.S, W = result.grid.W;
+  const PPM = Math.max(6, Math.min(14, Math.floor(900 / S)));  // pixel/mét theo chiều dọc
+  const w = Math.round(S * PPM), h = Math.max(60, Math.round(W * PPM));
+  const barW = 18, pad = 78;                                     // chỗ cho thang màu + nhãn
+  const cv = doc.createElement("canvas"); cv.width = w + pad; cv.height = h;
+  const ctx = cv.getContext("2d"); ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, cv.width, cv.height);
+  const dL = xs[1] - xs[0], dT = ys.length > 1 ? ys[1] - ys[0] : W;
+  const sample = (xw, yw) => {                                   // song tuyến trên tâm ô, kẹp ở biên
+    let fi = (xw - xs[0]) / dL, fj = (yw - ys[0]) / dT;
+    let i0 = Math.max(0, Math.min(nx - 2, Math.floor(fi))), j0 = Math.max(0, Math.min(ny - 2, Math.floor(fj)));
+    const tx = Math.max(0, Math.min(1, fi - i0)), ty = Math.max(0, Math.min(1, fj - j0));
+    if (nx === 1) return g[Math.min(ny - 1, Math.max(0, Math.round(fj)))][0];
+    if (ny === 1) return g[0][i0] + (g[0][i0 + 1] - g[0][i0]) * tx;
+    const a = g[j0][i0] + (g[j0][i0 + 1] - g[j0][i0]) * tx, b = g[j0 + 1][i0] + (g[j0 + 1][i0 + 1] - g[j0 + 1][i0]) * tx;
+    return a + (b - a) * ty;
+  };
+  const img = ctx.createImageData(w, h); const px = img.data;
+  const hex = (c) => c.match(/\d+/g).map(Number);
+  for (let py = 0; py < h; py++) {
+    const yw = W - (py + 0.5) / h * W;                           // y lớn ở trên
+    for (let pxl = 0; pxl < w; pxl++) {
+      const xw = (pxl + 0.5) / w * S;
+      const t = max > min ? (sample(xw, yw) - min) / (max - min) : 0.5;
+      const c = hex(viridis(t)); const o = (py * w + pxl) * 4;
+      px[o] = c[0]; px[o + 1] = c[1]; px[o + 2] = c[2]; px[o + 3] = 255;
+    }
   }
+  ctx.putImageData(img, 0, 0);
+  ctx.strokeStyle = "#8a94a6"; ctx.lineWidth = 1; ctx.strokeRect(0.5, 0.5, w - 1, h - 1);
+  // thang màu
+  const bx = w + 10, by = 6, bh = h - 12;
+  const grd = ctx.createLinearGradient(0, by + bh, 0, by);
+  for (let k = 0; k <= 10; k++) grd.addColorStop(k / 10, viridis(k / 10));
+  ctx.fillStyle = grd; ctx.fillRect(bx, by, barW, bh);
+  ctx.strokeStyle = "#8a94a6"; ctx.strokeRect(bx + 0.5, by + 0.5, barW - 1, bh - 1);
+  ctx.fillStyle = "#374151"; ctx.font = "11px sans-serif"; ctx.textAlign = "left";
+  const dg = label === "lx" ? 1 : 2;
+  ctx.fillText(vn(max, dg), bx + barW + 3, by + 9);
+  ctx.fillText(vn((min + max) / 2, dg), bx + barW + 3, by + bh / 2 + 4);
+  ctx.fillText(vn(min, dg), bx + barW + 3, by + bh - 1);
   return cv.toDataURL("image/png");
 }
 
@@ -633,17 +668,20 @@ export function renderRoadPage(doc, { input, result, ph, meta, makeIntensity }) 
   // Độ rọi
   doc.setFontSize(10.5); doc.text("Độ rọi ngang (maintenance) — lưới & phân bố", M, y); y += 3;
   try {
-    const g = grid2D(result);
-    const aspect = g.ys.length / g.xs.length;
-    let iw = 118, ih = iw * aspect;
-    const maxH = 50; if (ih > maxH) { ih = maxH; iw = ih / aspect; } // giới hạn chiều cao ảnh
-    if (y + ih + 14 > 288) { y = newPage(doc, d); } // tránh tràn trang
+    const S_ = result.grid.S, W_ = result.grid.W;
+    const PPM_ = Math.max(6, Math.min(14, Math.floor(900 / S_)));
+    const cw_ = Math.round(S_ * PPM_) + 78, ch_ = Math.max(60, Math.round(W_ * PPM_));
+    const aspect = ch_ / cw_;
+    let iw = 132, ih = iw * aspect;
+    if (ih < 40) { ih = 40; iw = Math.min(132, ih / aspect); }     // tối thiểu 40mm cao
+    const maxH = 78; if (ih > maxH) { ih = maxH; iw = ih / aspect; }
+    if (y + ih + 14 > 288) { y = newPage(doc, d); }
     const fc = falseColorDataURL(result, globalThis.document);
     doc.addImage(fc, "PNG", M, y, iw, ih);
     doc.setFontSize(8); doc.text(`${vn(result.grid.S,0)} m × ${vn(result.grid.W,1)} m (dọc × ngang)`, M, y + ih + 4);
     const e = d.illum;
-    drawTable(doc, M + iw + 6, y, [22, 20], [
-      ["Eav", vn(e.Eav, 1)], ["Emin", vn(e.Emin, 2)], ["Emax", vn(e.Emax, 1)],
+    drawTable(doc, M + iw + 4, y, [22, 20], [
+      ["Eav", vn(e.Eav, 1) + " lx"], ["Emin", vn(e.Emin, 2)], ["Emax", vn(e.Emax, 1)],
       ["Uo (g1)", vn(e.g1, 2)], ["g2", vn(e.g2, 2)],
     ], { rh: 6.5, fs: 8.5 });
     y += ih + 9;
