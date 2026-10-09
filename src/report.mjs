@@ -198,103 +198,133 @@ export function planDataURL(d, doc = globalThis.document) {
 }
 
 /**
- * Mô phỏng 3D phối cảnh ban đêm (perspective) của tuyến -> dataURL.
- * Độ sáng vũng đèn tỉ lệ theo độ rọi trung bình Eav đã tính (mô phỏng thật).
+ * Mô phỏng 3D phối cảnh ban đêm — DATA-DRIVEN: mặt đường được tô từ chính
+ * lưới độ rọi E đã tính (chiếu ngược từng pixel → toạ độ đường → lấy E, lặp theo nhịp).
+ * Kèm thang màu lx. Đây là bản đồ kết quả thật trong phối cảnh, không phải minh hoạ.
  */
 export function perspective3DDataURL(d, result, doc = globalThis.document) {
   const I = d.install, W = I.width || 7, S = I.spacing || 30, H = I.H || 9, ov = I.overhang || 0;
-  const Eav = (result && result.E && result.E.avg) || 15;
   const two = /đối xứng|doi xung|so le|staggered|opposite/i.test(I.arrangement || "");
   const stag = /so le|staggered/i.test(I.arrangement || "");
-  const CW = 840, CH = 400, xNear = 12;
+  const CW = 840, CH = 400, xNear = 6, Xfar = 220;
   const cv = doc.createElement("canvas"); cv.width = CW; cv.height = CH;
   const ctx = cv.getContext("2d");
-  // --- camera / phép chiếu pinhole ---
+  // --- camera / phép chiếu pinhole (tầm mắt lái xe) ---
   const cx = CW / 2, horizonY = CH * 0.40, f = 620, hCam = 1.7, d0 = 10;
   const proj = (x, yLat, z = 0) => ({ sx: cx + f * yLat / (x + d0), sy: horizonY + f * (hCam - z) / (x + d0), s: f / (x + d0) });
 
-  // --- bầu trời đêm ---
+  // --- lưới E một nhịp + hàm lấy mẫu song tuyến (lặp theo S, kẹp theo W) ---
+  const G = grid2D(result); const xs = G.xs, ys = G.ys, g = G.g;
+  const Emax = Math.max(1e-6, result.E.max), Emin = result.E.min;
+  const nx = xs.length, ny = ys.length, dL = xs[1] - xs[0], dT = ys[1] - ys[0];
+  const sampleE = (xw, yw) => {
+    let xm = ((xw % S) + S) % S;               // lặp theo nhịp
+    let fi = (xm - xs[0]) / dL;                // chỉ số cột (có thể <0 hoặc >nx-1 → wrap)
+    let i0 = Math.floor(fi), tx = fi - i0;
+    const ia = ((i0 % nx) + nx) % nx, ib = (ia + 1) % nx;
+    let fj = (Math.min(W, Math.max(0, yw)) - ys[0]) / dT;
+    let j0 = Math.max(0, Math.min(ny - 2, Math.floor(fj))), ty = Math.max(0, Math.min(1, fj - j0));
+    const a = g[j0][ia] + (g[j0][ib] - g[j0][ia]) * tx;
+    const b = g[j0 + 1][ia] + (g[j0 + 1][ib] - g[j0 + 1][ia]) * tx;
+    return a + (b - a) * ty;
+  };
+  // thang màu "đêm": nhựa tối → hổ phách → trắng ấm (theo t = E/Emax)
+  const ramp = (t) => {
+    t = Math.max(0, Math.min(1, t));
+    const st = [[0, [38, 41, 47]], [0.25, [92, 78, 54]], [0.55, [214, 160, 86]], [0.8, [255, 212, 140]], [1, [255, 246, 215]]];
+    for (let k = 0; k < st.length - 1; k++) {
+      if (t <= st[k + 1][0]) {
+        const u = (t - st[k][0]) / (st[k + 1][0] - st[k][0]); const A = st[k][1], B = st[k + 1][1];
+        return [A[0] + (B[0] - A[0]) * u, A[1] + (B[1] - A[1]) * u, A[2] + (B[2] - A[2]) * u];
+      }
+    }
+    return st[st.length - 1][1];
+  };
+
+  // --- bầu trời đêm + nền đất ---
   const sky = ctx.createLinearGradient(0, 0, 0, horizonY);
   sky.addColorStop(0, "#070d1c"); sky.addColorStop(0.7, "#132138"); sky.addColorStop(1, "#2a3b52");
   ctx.fillStyle = sky; ctx.fillRect(0, 0, CW, horizonY);
-  // ráng sáng chân trời
   const glow = ctx.createLinearGradient(0, horizonY - 40, 0, horizonY);
-  glow.addColorStop(0, "rgba(255,210,150,0)"); glow.addColorStop(1, "rgba(255,196,120,0.18)");
+  glow.addColorStop(0, "rgba(255,210,150,0)"); glow.addColorStop(1, "rgba(255,196,120,0.16)");
   ctx.fillStyle = glow; ctx.fillRect(0, horizonY - 40, CW, 40);
-  // sao
   ctx.fillStyle = "rgba(255,255,255,0.7)";
   for (let i = 0; i < 70; i++) { const rx = (i * 137.5) % CW, ry = (i * 61.7) % (horizonY - 20); ctx.globalAlpha = 0.3 + ((i * 7) % 10) / 14; ctx.fillRect(rx, ry, 1.4, 1.4); }
   ctx.globalAlpha = 1;
-  // mặt đất nền tối
   ctx.fillStyle = "#0e1014"; ctx.fillRect(0, horizonY, CW, CH - horizonY);
 
-  // --- mặt đường (hình thang phối cảnh) ---
-  const Xfar = 200;
-  const eL0 = proj(0, -W / 2), eR0 = proj(0, W / 2), eLf = proj(Xfar, -W / 2), eRf = proj(Xfar, W / 2);
-  ctx.beginPath(); ctx.moveTo(eL0.sx, eL0.sy); ctx.lineTo(eR0.sx, eR0.sy); ctx.lineTo(eRf.sx, eRf.sy); ctx.lineTo(eLf.sx, eLf.sy); ctx.closePath();
-  const road = ctx.createLinearGradient(0, horizonY, 0, CH);
-  road.addColorStop(0, "#2b2f35"); road.addColorStop(0.6, "#3f444c"); road.addColorStop(1, "#4d535c");
-  ctx.fillStyle = road; ctx.fill();
-  // mép đường trắng
-  ctx.strokeStyle = "rgba(235,238,243,0.85)"; ctx.lineWidth = 1;
-  for (const s of [-1, 1]) {
-    ctx.beginPath(); const a = proj(0, s * W / 2), b = proj(Xfar, s * W / 2);
-    ctx.moveTo(a.sx, a.sy); ctx.lineTo(b.sx, b.sy); ctx.lineWidth = Math.max(0.6, a.s * 0.12); ctx.stroke();
+  // --- mặt đường: tô từng pixel theo E thật ---
+  const img = ctx.getImageData(0, 0, CW, CH); const px = img.data;
+  const y0 = Math.ceil(horizonY) + 1;
+  for (let sy = y0; sy < CH; sy++) {
+    const xw = f * hCam / (sy - horizonY) - d0;        // khoảng cách dọc đường
+    if (xw < 0 || xw > Xfar) continue;
+    const kx = (xw + d0) / f;
+    for (let sx = 0; sx < CW; sx++) {
+      const yLat = (sx - cx) * kx;
+      if (yLat < -W / 2 || yLat > W / 2) continue;
+      const E = sampleE(xw, yLat + W / 2);
+      const c = ramp((E - Emin) / Math.max(1e-6, Emax - Emin)); // giãn Emin→Emax cho rõ vũng sáng/tối
+      const o = (sy * CW + sx) * 4;
+      px[o] = c[0]; px[o + 1] = c[1]; px[o + 2] = c[2]; px[o + 3] = 255;
+    }
   }
-  // vạch tim/làn đứt
+  ctx.putImageData(img, 0, 0);
+
+  // --- vạch mép & vạch làn (mờ, để lộ dữ liệu) ---
+  for (const s of [-1, 1]) {
+    const a = proj(0, s * W / 2), b = proj(Xfar, s * W / 2);
+    ctx.strokeStyle = "rgba(240,242,246,0.75)"; ctx.lineWidth = Math.max(0.8, a.s * 0.1);
+    ctx.beginPath(); ctx.moveTo(a.sx, a.sy); ctx.lineTo(b.sx, b.sy); ctx.stroke();
+  }
   const lanes = I.lanes || 2;
   for (let l = 1; l < lanes; l++) {
     const yl = -W / 2 + W * l / lanes;
     for (let x = 2; x < Xfar; x += 8) {
       const p1 = proj(x, yl), p2 = proj(x + 4, yl);
-      ctx.strokeStyle = "rgba(220,225,232,0.7)"; ctx.lineWidth = Math.max(0.5, p1.s * 0.1);
+      ctx.strokeStyle = "rgba(235,238,243,0.55)"; ctx.lineWidth = Math.max(0.5, p1.s * 0.09);
       ctx.beginPath(); ctx.moveTo(p1.sx, p1.sy); ctx.lineTo(p2.sx, p2.sy); ctx.stroke();
     }
   }
 
-  // --- vũng sáng + trụ đèn ---
-  const bright = Math.max(0.2, Math.min(1, Eav / 35)); // độ sáng theo Eav
+  // --- trụ + cần + đèn (vẽ xa trước) ---
   const poles = [];
   for (let k = 0; k <= Math.floor(Xfar / S) + 1; k++) {
     poles.push({ x: k * S, yLat: ov - W / 2, side: -1 });
     if (two) poles.push({ x: k * S + (stag ? S / 2 : 0), yLat: W / 2 - ov, side: 1 });
   }
-  poles.sort((a, b) => b.x - a.x); // xa vẽ trước
-  // vũng sáng trên mặt đường (radial gradient ấm)
-  for (const p of poles) {
-    if (p.x < xNear || p.x > 150) continue;
-    const g = proj(p.x, 0);
-    const rW = H * 1.3; let r = rW * g.s; if (r < 2) continue; r = Math.min(r, 135);
-    const cxp = proj(p.x, p.yLat * 0.25).sx;
-    const grd = ctx.createRadialGradient(cxp, g.sy, 1, cxp, g.sy, r);
-    grd.addColorStop(0, `rgba(255,224,168,${0.22 * bright})`);
-    grd.addColorStop(0.55, `rgba(255,205,130,${0.10 * bright})`);
-    grd.addColorStop(1, "rgba(255,198,118,0)");
-    ctx.save(); ctx.globalCompositeOperation = "lighter";
-    ctx.beginPath(); ctx.ellipse(proj(p.x, p.yLat * 0.3).sx, g.sy, r, r * 0.42, 0, 0, 2 * Math.PI); ctx.fillStyle = grd; ctx.fill();
-    ctx.restore();
-  }
-  // trụ + cần + đèn sáng
+  poles.sort((a, b) => b.x - a.x);
   for (const p of poles) {
     if (p.x < xNear) continue;
     const base = proj(p.x, p.yLat, 0), top = proj(p.x, p.yLat, H);
     if (base.s < 0.12) continue;
-    ctx.strokeStyle = "#0e1116"; ctx.lineWidth = Math.max(0.8, base.s * 0.5);
+    ctx.strokeStyle = "#0b0d11"; ctx.lineWidth = Math.max(0.8, base.s * 0.5);
     ctx.beginPath(); ctx.moveTo(base.sx, base.sy); ctx.lineTo(top.sx, top.sy); ctx.stroke();
-    // cần vươn vào tim đường
     const lamp = proj(p.x, p.yLat - p.side * (I.boomLength || 1.5) * 0.6, H);
     ctx.beginPath(); ctx.moveTo(top.sx, top.sy); ctx.lineTo(lamp.sx, lamp.sy); ctx.stroke();
-    // bóng đèn sáng (quầng vừa phải, tránh cháy sáng)
-    const lr = Math.max(1.2, Math.min(5, base.s * 0.7));
-    const lg = ctx.createRadialGradient(lamp.sx, lamp.sy, 0, lamp.sx, lamp.sy, lr * 2.4);
-    lg.addColorStop(0, "rgba(255,244,210,0.75)"); lg.addColorStop(0.45, "rgba(255,222,150,0.3)"); lg.addColorStop(1, "rgba(255,210,120,0)");
+    const lr = Math.max(1.2, Math.min(4.5, base.s * 0.6));
+    const lg = ctx.createRadialGradient(lamp.sx, lamp.sy, 0, lamp.sx, lamp.sy, lr * 2.2);
+    lg.addColorStop(0, "rgba(255,244,210,0.8)"); lg.addColorStop(0.5, "rgba(255,222,150,0.28)"); lg.addColorStop(1, "rgba(255,210,120,0)");
     ctx.save(); ctx.globalCompositeOperation = "lighter"; ctx.fillStyle = lg;
-    ctx.beginPath(); ctx.arc(lamp.sx, lamp.sy, lr * 2.4, 0, 2 * Math.PI); ctx.fill(); ctx.restore();
+    ctx.beginPath(); ctx.arc(lamp.sx, lamp.sy, lr * 2.2, 0, 2 * Math.PI); ctx.fill(); ctx.restore();
     ctx.fillStyle = "#fff4d6"; ctx.beginPath(); ctx.arc(lamp.sx, lamp.sy, lr * 0.8, 0, 2 * Math.PI); ctx.fill();
   }
-  // vignette
-  const vg = ctx.createRadialGradient(cx, CH * 0.6, CH * 0.3, cx, CH * 0.6, CH * 0.9);
-  vg.addColorStop(0, "rgba(0,0,0,0)"); vg.addColorStop(1, "rgba(0,0,0,0.38)");
+
+  // --- thang màu E [lx] ---
+  const lx0 = CW - 46, ly0 = horizonY + 18, lh = CH - horizonY - 52, lw = 14;
+  const lg2 = ctx.createLinearGradient(0, ly0 + lh, 0, ly0);
+  for (let k = 0; k <= 10; k++) { const c = ramp(k / 10); lg2.addColorStop(k / 10, `rgb(${c[0] | 0},${c[1] | 0},${c[2] | 0})`); }
+  ctx.fillStyle = "rgba(10,12,16,0.55)"; ctx.fillRect(lx0 - 8, ly0 - 16, 52, lh + 34);
+  ctx.fillStyle = lg2; ctx.fillRect(lx0, ly0, lw, lh);
+  ctx.strokeStyle = "rgba(255,255,255,0.5)"; ctx.lineWidth = 1; ctx.strokeRect(lx0, ly0, lw, lh);
+  ctx.fillStyle = "#e8ecf2"; ctx.font = "11px sans-serif"; ctx.textAlign = "left";
+  ctx.fillText("E [lx]", lx0 - 4, ly0 - 5);
+  ctx.fillText(vn(Emax, 0), lx0 + lw + 3, ly0 + 4);
+  ctx.fillText(vn((Emax + Emin) / 2, 0), lx0 + lw + 3, ly0 + lh / 2 + 4);
+  ctx.fillText(vn(Emin, 0), lx0 + lw + 3, ly0 + lh + 4);
+  // vignette nhẹ
+  const vg = ctx.createRadialGradient(cx, CH * 0.6, CH * 0.35, cx, CH * 0.6, CH * 0.95);
+  vg.addColorStop(0, "rgba(0,0,0,0)"); vg.addColorStop(1, "rgba(0,0,0,0.28)");
   ctx.fillStyle = vg; ctx.fillRect(0, 0, CW, CH);
   return cv.toDataURL("image/png");
 }
