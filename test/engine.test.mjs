@@ -101,3 +101,19 @@ test("ca xấu: hình học thiếu -> vẫn chạy, không NaN", () => {
   const r = calcRoad({ ies: CAR, H: 9, overhang: 0, spacing: 30, width: 7, lanes: 2, roadClass: "C2" });
   assert.ok(Number.isFinite(r.E.avg) && Number.isFinite(r.road.Lav));
 });
+
+test("calcRoad: Lav tỉ lệ tuyến tính với q0 (0.08/0.07 = 1.1429)", async () => {
+  const { readFileSync } = await import("node:fs");
+  const { fileURLToPath } = await import("node:url");
+  const { dirname, join } = await import("node:path");
+  const { parseIES } = await import("../src/ies.mjs");
+  const here = dirname(fileURLToPath(import.meta.url));
+  const ph = parseIES(readFileSync(join(here, "../data/ies/MAGNOLIA-BL-STR16B-PD24-100W.ies"), "utf8"));
+  const g = { ies: ph, H: 10.5, overhang: 0, spacing: 35, width: 13, lanes: 3, arrangement: "đối xứng", tilt: 15, MF: 0.8, roadClass: "C2" };
+  const a = calcRoad({ ...g, q0: 0.07 }).road.Lav;
+  const b = calcRoad({ ...g, q0: 0.08 }).road.Lav;
+  assert.ok(Math.abs(b / a - 0.08 / 0.07) < 1e-6, "Lav scale đúng theo q0");
+  // mặc định (không truyền q0) = R3 q0 0,07
+  const d = calcRoad({ ...g }).road.Lav;
+  assert.ok(Math.abs(d - a) < 1e-9, "mặc định = q0 0,07");
+});

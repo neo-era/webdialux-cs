@@ -16,7 +16,7 @@ export function reportData(input, result, ph, meta = {}) {
     install: {
       spacing: input.spacing, H: input.H, overhang: input.overhang, tilt: input.tilt,
       width: input.width, lanes: input.lanes, arrangement: input.arrangement, MF: input.MF ?? 0.8,
-      surface: "CIE R3, q0 0,07",
+      surface: "CIE R3, q0 " + String(input.q0 ?? 0.07).replace(".", ","),
     },
     checks: [
       checkRow("Lav (Ltb)", road.Lav, req.Ltb, c.Ltb, "cd/m²"),

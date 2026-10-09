@@ -33,6 +33,19 @@ export function makeRTableFromData(data) {
 }
 
 /**
+ * Nhân tỉ lệ một bảng r theo q0 mới (giữ nguyên hình dạng góc, chỉ đổi độ lớn).
+ * Độ chói tỉ lệ tuyến tính với q0 -> r_new = r_base * (q0_target / q0_base).
+ * Dùng để mô phỏng mặt đường cùng loại (R3) nhưng q0 khác (vd DIALux Tarmac q0=0,08).
+ */
+export function scaleRTable(base, q0target) {
+  const k = q0target / (base.q0 || 0.07);
+  const fn = (betaDeg, tanE) => base(betaDeg, tanE) * k;
+  fn.provisional = !!base.provisional;
+  fn.q0 = q0target;
+  return fn;
+}
+
+/**
  * MÔ HÌNH TẠM (khuếch tán Lambert gần đúng): r = q0 * cos^3(eps) * 1e4, bỏ qua phụ thuộc beta.
  * Cho độ chói đúng bậc độ lớn, KHÔNG phản ánh tính gương của mặt nhựa.
  * CHỈ dùng khi chưa có bảng chuẩn. Luôn kèm cờ provisional=true.

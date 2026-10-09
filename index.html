@@ -97,6 +97,15 @@ a{color:var(--accent)}
       <button id="btnXlsx">📄 Chọn file Excel</button>
       <button id="btnIes">📁 Chọn thư mục IES</button>
       <label class="opt">MF <input type="number" id="mf" value="0.8" step="0.05" min="0.3" max="1"></label>
+      <label class="opt">Mặt đường (q0)
+        <select id="q0" title="Hệ số độ chói trung bình q0 của mặt đường (CIE R3). 0,08 = Tarmac theo DIALux.">
+          <option value="0.10">R3 · q0 0,10 (rất sáng)</option>
+          <option value="0.09">R3 · q0 0,09</option>
+          <option value="0.08" selected>R3 · q0 0,08 (Tarmac – DIALux)</option>
+          <option value="0.07">R3 · q0 0,07 (CIE chuẩn)</option>
+          <option value="0.06">R3 · q0 0,06</option>
+          <option value="0.05">R3 · q0 0,05 (tối)</option>
+        </select></label>
       <label class="opt">Chế độ
         <select id="mode"><option value="rank">Đa phương án (chấm điểm &amp; chọn tối ưu)</option><option value="each">Từng phương án (1 đèn/dòng)</option></select>
       </label>
@@ -171,7 +180,7 @@ a{color:var(--accent)}
     <ol>
       <li>Bấm <b>📄 Chọn file Excel</b> → chọn file dữ liệu tuyến.</li>
       <li>Bấm <b>📁 Chọn thư mục IES</b> → chọn thư mục chứa .ies.</li>
-      <li>Chỉnh <b>MF</b> (hệ số bảo trì, mặc định 0,8) và <b>Chế độ</b> nếu cần.</li>
+      <li>Chỉnh <b>MF</b> (hệ số bảo trì, mặc định 0,8), <b>Mặt đường (q0)</b> và <b>Chế độ</b> nếu cần. <b>q0</b> là hệ số độ chói trung bình của mặt đường (CIE R3): mặc định <b>0,08</b> (Tarmac theo DIALux); chọn 0,07 nếu dùng R3 chuẩn CIE. Độ chói Ltb tỉ lệ thuận với q0.</li>
       <li>Bấm <b>▶ Chạy</b> → xem bảng kết quả + thẻ tổng hợp (Đạt / Không đạt / Thiếu IES). Lọc hoặc gõ tên tuyến để tìm.</li>
       <li>Bấm <b>💾 Ghi/Tải Excel</b> để ghi kết quả (Ltb/Uo/Ul/TI/SR + Đạt) vào file.</li>
       <li>Bấm <b>📑 Xuất PDF</b> để xuất báo cáo kiểu DIALux (các tuyến đang lọc, 1 trang/tuyến).</li>
@@ -276,11 +285,12 @@ function maybeEnableRun(){ $("btnRun").disabled = !(rows && iesIndex.length); }
 // ---- Chạy ----
 $("btnRun").onclick = () => {
   const MF=parseFloat($("mf").value)||0.8;
+  const q0=parseFloat($("q0").value)||0.08;
   resultMode=$("mode").value;
   const t0=performance.now();
   try{
-    if(resultMode==="rank"){ results=runBatchRanked(rows,iesIndex,{MF}); }
-    else { results=runBatch(rows,iesIndex,{MF}); }
+    if(resultMode==="rank"){ results=runBatchRanked(rows,iesIndex,{MF,q0}); }
+    else { results=runBatch(rows,iesIndex,{MF,q0}); }
   }catch(e){ setStatus("Lỗi khi chạy: "+e.message,true); return; }
   const ms=Math.round(performance.now()-t0);
   render();
@@ -387,6 +397,8 @@ $("flt").onchange=drawRows; $("q").oninput=drawRows;
 // ---- Ghi/Tải kết quả: chế độ ĐA PHƯƠNG ÁN (chấm điểm) -> bảng nhiều dòng/tuyến ----
 async function saveRanked(){
   try{
+    const q0sel=parseFloat($("q0").value)||0.08;
+    const surf="CIE R3 · q0 "+String(q0sel).replace(".",",");
     const n2=(x)=>x==null?"":+(+x).toFixed(2);
     const n0=(x)=>x==null?"":Math.round(x);
     const n1=(x)=>x==null?"":+(+x).toFixed(1);
@@ -395,7 +407,7 @@ async function saveRanked(){
     const HEAD=[
       "STT","Tuyến đường","Độ cao bộ đèn (m)","Độ vươn cần đèn (m)","Góc nghiêng (độ)",
       "Độ rộng lòng đường (m)","Khoảng cột (m)","Setback (m)","Cách bố trí","Dải phân cách","Số làn",
-      "Loại tuyến","Cấp đường","Nguồn cấp đường","Ltb YC","Uo YC","Ul YC","TI YC (%)","SR YC",
+      "Loại tuyến","Cấp đường","Nguồn cấp đường","Mặt đường (q0)","Ltb YC","Uo YC","Ul YC","TI YC (%)","SR YC",
       "Loại đèn","Hãng","Công suất (W)","File IES","Ltb KQ","Uo KQ","Ul KQ","TI KQ (%)","SR KQ","En KQ (lx)",
       "Kết quả","Điểm Ltb","Điểm Uo","Điểm Ul","Điểm TI","Điểm SR","Tổng điểm lần 1","Tổng điểm lần 2","Xếp hạng","Chọn",
       "Đèn tối ưu (hạng 1)","Công suất chọn (W)","Hãng chọn",
@@ -407,14 +419,14 @@ async function saveRanked(){
       const meta=r.meta||{};
       if(r.status!=="ok"){
         aoa.push([r.stt??"",r.tuyen??"", n2(g.H),n2(g.overhang),n0(g.tilt),n2(g.width),n2(g.spacing),"", g.arrangement||"", "", g.lanes||"",
-          meta.loaituyen||"", r.roadClass||"", srcLbl(r.classSource), "","","","","",
+          meta.loaituyen||"", r.roadClass||"", srcLbl(r.classSource), surf, "","","","","",
           "","","","", "","","","","","", r.status, "","","","","","","","", "", "","",""]);
         continue;
       }
       const opts=(r.options||[]).filter(o=>o.pass); const chosen=r.chosen;
       if(opts.length===0){
         aoa.push([r.stt??"",r.tuyen??"", n2(g.H),n2(g.overhang),n0(g.tilt),n2(g.width),n2(g.spacing),"", g.arrangement||"", "", g.lanes||"",
-          meta.loaituyen||"", r.roadClass||"", srcLbl(r.classSource),
+          meta.loaituyen||"", r.roadClass||"", srcLbl(r.classSource), surf,
           yge(req.Ltb),yge(req.Uo),yge(req.Ul),yle(req.TI),yge(req.SR),
           "","","","", "","","","","","", "KHÔNG ĐẠT (không bộ đèn nào đạt)", "","","","","","","","", "", "","",""]);
         continue;
@@ -425,7 +437,7 @@ async function saveRanked(){
           head?(r.stt??""):"", head?(r.tuyen??""):"",
           head?n2(g.H):"", head?n2(g.overhang):"", head?n0(g.tilt):"",
           head?n2(g.width):"", head?n2(g.spacing):"", "", head?(g.arrangement||""):"", "", head?(g.lanes||""):"",
-          head?(meta.loaituyen||""):"", head?(r.roadClass||""):"", head?srcLbl(r.classSource):"",
+          head?(meta.loaituyen||""):"", head?(r.roadClass||""):"", head?srcLbl(r.classSource):"", head?surf:"",
           head?yge(req.Ltb):"", head?yge(req.Uo):"", head?yge(req.Ul):"", head?yle(req.TI):"", head?yge(req.SR):"",
           o.model||"", o.manufac||"", o.power??"", cleanIes(o.iesName),
           n2(o.Ltb),n2(o.Uo),n2(o.Ul),n0(o.TI),n2(o.SR),n1(o.En),
@@ -522,6 +534,7 @@ $("btnPdf").onclick = async () => {
     const jsPDF = window.jspdf && window.jspdf.jsPDF;
     if(!jsPDF){ setStatus("Chưa tải được thư viện jsPDF (kiểm tra mạng/CDN).",true); return; }
     const MF=parseFloat($("mf").value)||0.8;
+    const q0=parseFloat($("q0").value)||0.08;
     const byName=new Map(iesIndex.map(e=>[e.name,e]));
     let doc=null, made=0;
     for(const i of idxs){
@@ -532,7 +545,7 @@ $("btnPdf").onclick = async () => {
       if(!e){ const m=matchIES(g.meta, iesIndex); e=m.ies; }
       if(!e) continue;
       // cấp đường: dùng cấp đã xác định ở bước tính (có thể là cấp tự phân)
-      const input={...g.input, roadClass: (res&&res.roadClass)||g.input.roadClass, MF, detail:true};
+      const input={...g.input, roadClass: (res&&res.roadClass)||g.input.roadClass, MF, q0, detail:true};
       let result; try{ result=calcRoad({ies:e.ph, ...input}); }catch(_){ continue; }
       if(!doc) doc=makeDoc({jsPDF,font}); else doc.addPage();
       const autoSel = (res&&res.autoSelect) || (isRanked() && !g.meta.model);

@@ -28,7 +28,7 @@ export function buildIesIndex(files) {
  * Nếu không đèn nào Đạt, trả đèn công suất LỚN NHẤT (gần đạt nhất) để vẫn có số liệu.
  * @returns {ies, r, pass} | null
  */
-export function selectLowestPassing(geomInput, iesIndex, { MF = 0.8, rfn, modelFilter = null } = {}) {
+export function selectLowestPassing(geomInput, iesIndex, { MF = 0.8, rfn, q0 = null, modelFilter = null } = {}) {
   const cands = iesIndex
     .filter((e) => e.power != null && (modelFilter ? e.model === modelFilter : true))
     .slice().sort((a, b) => a.power - b.power);
@@ -36,7 +36,7 @@ export function selectLowestPassing(geomInput, iesIndex, { MF = 0.8, rfn, modelF
   let fallback = null;
   for (const c of cands) {
     try {
-      const r = calcRoad({ ies: c.ph, ...geomInput, MF, ...(rfn ? { rfn } : {}) });
+      const r = calcRoad({ ies: c.ph, ...geomInput, MF, ...(q0 ? { q0 } : {}), ...(rfn ? { rfn } : {}) });
       fallback = { ies: c, r, pass: r.pass }; // đèn công suất lớn nhất đã thử
       if (r.pass) return { ies: c, r, pass: true };
     } catch (_) { /* bỏ ứng viên lỗi */ }
@@ -50,7 +50,7 @@ export function selectLowestPassing(geomInput, iesIndex, { MF = 0.8, rfn, modelF
  * - Nếu KHÔNG có model: TỰ CHỌN bộ đèn công suất nhỏ nhất vẫn Đạt (dữ liệu chỉ có hình học).
  */
 export function runBatch(rows, iesIndex, opts = {}) {
-  const { MF = 0.8, rfn } = opts;
+  const { MF = 0.8, rfn, q0 = null } = opts;
   return rows.map((row) => {
     const g = rowToGeometry(row);
     const base = {
@@ -69,7 +69,7 @@ export function runBatch(rows, iesIndex, opts = {}) {
       const m = matchIES(g.meta, iesIndex);
       if (!m.ies) return { ...base, status: "thiếu IES", reason: m.reason, autoSelect: false };
       try {
-        const r = calcRoad({ ies: m.ies.ph, ...g.input, MF, ...(rfn ? { rfn } : {}) });
+        const r = calcRoad({ ies: m.ies.ph, ...g.input, MF, ...(q0 ? { q0 } : {}), ...(rfn ? { rfn } : {}) });
         chosen = { ies: m.ies, r }; note = m.reason;
       } catch (e) {
         return { ...base, status: "lỗi tính", reason: String(e.message || e) };
@@ -78,7 +78,7 @@ export function runBatch(rows, iesIndex, opts = {}) {
     }
 
     // KHÔNG chỉ định đèn -> tự chọn nhỏ nhất vẫn Đạt
-    const sel = selectLowestPassing(g.input, iesIndex, { MF, rfn });
+    const sel = selectLowestPassing(g.input, iesIndex, { MF, rfn, q0 });
     if (!sel) return { ...base, status: "thiếu IES", reason: "thư viện IES trống", autoSelect: true };
     note = sel.pass ? "tự chọn: công suất nhỏ nhất vẫn Đạt" : "tự chọn: không đèn nào Đạt — lấy công suất lớn nhất";
     return emit(base, { ies: sel.ies, r: sel.r }, { autoSelect: true, note });
@@ -104,7 +104,7 @@ function emit(base, chosen, { autoSelect, note }) {
  *               d_Ltb..d_SR, tong1, tong2, diemXet, rank, chosen }
  */
 export function runBatchRanked(rows, iesIndex, opts = {}) {
-  const { MF = 0.8, rfn } = opts;
+  const { MF = 0.8, rfn, q0 = null } = opts;
   const cands = iesIndex.filter((e) => e.power != null);
   return rows.map((row) => {
     const g = rowToGeometry(row);
@@ -125,7 +125,7 @@ export function runBatchRanked(rows, iesIndex, opts = {}) {
     let req = null;
     for (const c of pool) {
       try {
-        const r = calcRoad({ ies: c.ph, ...g.input, MF, ...(rfn ? { rfn } : {}) });
+        const r = calcRoad({ ies: c.ph, ...g.input, MF, ...(q0 ? { q0 } : {}), ...(rfn ? { rfn } : {}) });
         req = r.req;
         raw.push({
           iesName: c.name, model: c.model, manufac: c.manufac, power: c.power,
@@ -150,7 +150,7 @@ export function runBatchRanked(rows, iesIndex, opts = {}) {
 
 /** Tự dò theo tuyến (gộp theo STT) — giữ tương thích CLI cũ. */
 export function autoFind(rows, iesIndex, opts = {}) {
-  const { MF = 0.8, rfn } = opts;
+  const { MF = 0.8, rfn, q0 = null } = opts;
   const roads = [];
   let cur = null;
   for (const row of rows) {
@@ -162,7 +162,7 @@ export function autoFind(rows, iesIndex, opts = {}) {
     if (g.input.H == null || g.input.width == null || g.input.spacing == null)
       return { stt: rd.stt, tuyen: rd.tuyen, status: "thiếu hình học" };
     const mk = modelKeyword(g.meta.model) || null;
-    const sel = selectLowestPassing(g.input, iesIndex, { MF, rfn, modelFilter: mk });
+    const sel = selectLowestPassing(g.input, iesIndex, { MF, rfn, q0, modelFilter: mk });
     if (!sel) return { stt: rd.stt, tuyen: rd.tuyen, status: "không có đèn Đạt" };
     const r = sel.r;
     return {

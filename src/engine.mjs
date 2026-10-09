@@ -3,10 +3,10 @@ import { makeIntensity } from "./ies.mjs";
 import { buildLuminaires, buildGrid, buildObservers, angleLumToPoint } from "./geometry.mjs";
 import { illuminanceAtPoint, luminanceAtPoint, thresholdIncrement } from "./photometry.mjs";
 import { stats, longitudinalUniformity } from "./metrics.mjs";
-import { makeRTableFromData } from "./rtable.mjs";
+import { makeRTableFromData, scaleRTable } from "./rtable.mjs";
 import R3DATA from "./r3data.mjs";
 
-const R3 = makeRTableFromData(R3DATA); // bảng R3 CIE thật (từ DIALux)
+const R3 = makeRTableFromData(R3DATA); // bảng R3 CIE thật (từ DIALux), q0=0,07
 
 // Ngưỡng QCVN 07-7:2023
 export const QCVN = {
@@ -28,8 +28,11 @@ export function calcRoad(input) {
   const {
     ies, H, overhang, spacing, width, lanes = 2, arrangement = "1 bên",
     tilt = 0, MF = 0.8, roadClass = "D1", spanWindow = 5,
-    rfn = R3, detail = false,
+    q0 = null, detail = false,
   } = input;
+  // Bảng r mặt đường: ưu tiên rfn truyền vào; nếu không, dùng R3 (q0=0,07),
+  // nhân tỉ lệ nếu người dùng chọn q0 khác (vd 0,08 theo DIALux Tarmac).
+  const rfn = input.rfn || (q0 && q0 !== R3.q0 ? scaleRTable(R3, q0) : R3);
 
   const g = { H, overhang, spacing, width, lanes, arrangement, tilt, spanWindow };
   const I = makeIntensity(ies);
