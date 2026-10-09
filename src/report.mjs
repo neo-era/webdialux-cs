@@ -127,33 +127,51 @@ export function falseColorDataURL(result, doc = globalThis.document) {
   return cv.toDataURL("image/png");
 }
 
-/** Polar LDC (hai mặt C0-C180, C90-C270) -> dataURL. */
+/**
+ * Polar LDC kiểu DIALux: lưới góc 15° có nhãn, vòng tròn cd/klm có số,
+ * đỏ = mặt C0–C180 (ngang đường), xanh = mặt C90–C270 (dọc đường). -> dataURL
+ */
 export function polarDataURL(ph, makeIntensity, doc = globalThis.document) {
   const I = makeIntensity(ph);
-  const S = 240, cx = S / 2, cy = 30, R = S - 60;
+  const klm = (ph.totalLumens || 1000) / 1000;            // quy về cd/klm
+  const S = 460, cx = S / 2, cy = 168, R = 190;             // tâm (đèn) phía trên, 0° hướng xuống; R vừa để nhãn 105° còn trong khung
   const cv = doc.createElement("canvas"); cv.width = S; cv.height = S;
   const ctx = cv.getContext("2d");
   ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, S, S);
-  let imax = 1;
-  for (let c = 0; c < 360; c += 10) for (let g = 0; g <= 90; g += 5) imax = Math.max(imax, I(c, g));
-  const drawPlane = (c0, c1, color) => {
-    ctx.strokeStyle = color; ctx.lineWidth = 1.5; ctx.beginPath();
-    let first = true;
-    for (let side of [c0, c1]) {
-      for (let g = 0; g <= 90; g += 2) {
-        const v = I(side, g) / imax;
-        const ang = (side === c0 ? -1 : 1) * g * Math.PI / 180; // trái/phải
-        const x = cx + Math.sin(ang) * v * R, y = cy + Math.cos(ang) * v * R;
-        if (first) { ctx.moveTo(x, y); first = false; } else ctx.lineTo(x, y);
-      }
-    }
-    ctx.stroke();
+  // thang: bước đẹp sao cho ~4 vòng
+  let imax = 1; const gMax = Math.max(90, Math.max(...ph.vAngles));
+  for (let c = 0; c < 360; c += 5) for (let g = 0; g <= gMax; g += 2) imax = Math.max(imax, I(c, g) / klm);
+  const nice = (x) => { const e = Math.pow(10, Math.floor(Math.log10(x))); const m = x / e; return (m <= 1 ? 1 : m <= 2 ? 2 : m <= 2.5 ? 2.5 : m <= 5 ? 5 : 10) * e; };
+  const step = nice(imax / 4); const top = Math.ceil(imax / step) * step; const sc = R / top;
+  const pt = (gDeg, v, side) => { const a = gDeg * Math.PI / 180; return [cx + side * Math.sin(a) * v * sc, cy + Math.cos(a) * v * sc]; };
+  // lưới vòng tròn + nhãn giá trị (dọc trục xuống, hơi lệch phải)
+  ctx.strokeStyle = "#c9ced6"; ctx.lineWidth = 1; ctx.fillStyle = "#4b5563"; ctx.font = "11px sans-serif"; ctx.textAlign = "left";
+  for (let v = step; v <= top + 1e-9; v += step) {
+    ctx.beginPath(); ctx.arc(cx, cy, v * sc, 0, 2 * Math.PI); ctx.stroke();
+    ctx.fillText(String(Math.round(v)), cx + 4, cy + v * sc - 3);
+  }
+  // lưới góc mỗi 15° (tới 105° như DIALux) + nhãn
+  for (let g = 0; g <= 105; g += 15) for (const side of [-1, 1]) {
+    if (g === 0 && side === -1) continue;
+    const [x1, y1] = pt(g, top, side);
+    ctx.strokeStyle = "#d6dae1"; ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(x1, y1); ctx.stroke();
+    const [lx, ly] = pt(g, top * 1.07, side);
+    ctx.fillStyle = "#374151"; ctx.textAlign = "center"; ctx.fillText(g + "°", lx, ly + 4);
+  }
+  // đường cong 2 mặt C
+  const plane = (cR, cL, color) => {
+    ctx.strokeStyle = color; ctx.lineWidth = 2; ctx.beginPath(); let first = true;
+    const put = (c, g, side) => { const v = I(c, g) / klm; const [x, y] = pt(g, v, side); if (first) { ctx.moveTo(x, y); first = false; } else ctx.lineTo(x, y); };
+    for (let g = 0; g <= gMax; g++) put(cR, g, 1);        // nhánh phải: 0 → gMax
+    for (let g = gMax; g >= 0; g--) put(cL, g, -1);       // nhánh trái: gMax → 0 (khép kín)
+    ctx.closePath(); ctx.stroke();
   };
-  // lưới
-  ctx.strokeStyle = "#ddd";
-  for (let k = 1; k <= 3; k++){ ctx.beginPath(); ctx.arc(cx, cy, R*k/3, 0, Math.PI); ctx.stroke(); }
-  drawPlane(0, 180, "#c0392b");   // C0-C180 (ngang đường)
-  drawPlane(90, 270, "#2563a8");  // C90-C270 (dọc đường)
+  // Màu theo DIALux: ĐỎ = mặt dọc đường (cánh dơi rộng; IES gọi C90–C270), XANH = mặt ngang đường (IES C0–C180)
+  plane(90, 270, "#d62728");
+  plane(0, 180, "#1f4fd6");
+  // chú thích đơn vị
+  ctx.fillStyle = "#4b5563"; ctx.font = "11px sans-serif"; ctx.textAlign = "right";
+  ctx.fillText("cd/klm", S - 8, S - 8);
   return cv.toDataURL("image/png");
 }
 
@@ -218,6 +236,16 @@ export function planDataURL(d, doc = globalThis.document) {
   return cv.toDataURL("image/png");
 }
 
+/** Nhiệt độ màu (K) -> màu RGB xấp xỉ của ánh sáng (Tanner Helland). 3000K ấm vàng, 4000K trung tính, 5700K+ trắng lạnh. */
+export function cctToRGB(K) {
+  let t = Math.max(1000, Math.min(12000, K || 4000)) / 100, r, g, b;
+  r = t <= 66 ? 255 : Math.min(255, Math.max(0, 329.698727446 * Math.pow(t - 60, -0.1332047592)));
+  g = t <= 66 ? Math.min(255, Math.max(0, 99.4708025861 * Math.log(t) - 161.1195681661))
+              : Math.min(255, Math.max(0, 288.1221695283 * Math.pow(t - 60, -0.0755148492)));
+  b = t >= 66 ? 255 : (t <= 19 ? 0 : Math.min(255, Math.max(0, 138.5177312231 * Math.log(t - 10) - 305.0447927307)));
+  return [Math.round(r), Math.round(g), Math.round(b)];
+}
+
 /**
  * Mô phỏng 3D phối cảnh ban đêm — DATA-DRIVEN: mặt đường được tô từ chính
  * lưới độ rọi E đã tính (chiếu ngược từng pixel → toạ độ đường → lấy E, lặp theo nhịp).
@@ -249,10 +277,15 @@ export function perspective3DDataURL(d, result, doc = globalThis.document) {
     const b = g[j0 + 1][ia] + (g[j0 + 1][ib] - g[j0 + 1][ia]) * tx;
     return a + (b - a) * ty;
   };
-  // thang màu "đêm": nhựa tối → hổ phách → trắng ấm (theo t = E/Emax)
+  // màu ánh sáng theo nhiệt độ màu CCT của đèn (IES/Excel); không có -> 4000K trung tính
+  const cctK = parseInt(d.luminaire && d.luminaire.cct, 10) || 4000;
+  const LC = cctToRGB(cctK);                                      // màu nguồn sáng
+  const mix = (A, B, u) => [A[0] + (B[0] - A[0]) * u, A[1] + (B[1] - A[1]) * u, A[2] + (B[2] - A[2]) * u];
+  const asphalt = [38, 41, 47], white = [255, 252, 245];
+  // thang màu "đêm": nhựa tối → màu đèn (theo CCT) → gần trắng (theo t = E chuẩn hoá)
   const ramp = (t) => {
     t = Math.max(0, Math.min(1, t));
-    const st = [[0, [38, 41, 47]], [0.25, [92, 78, 54]], [0.55, [214, 160, 86]], [0.8, [255, 212, 140]], [1, [255, 246, 215]]];
+    const st = [[0, asphalt], [0.3, mix(asphalt, LC, 0.45)], [0.65, mix(asphalt, LC, 0.85)], [0.88, LC], [1, mix(LC, white, 0.55)]];
     for (let k = 0; k < st.length - 1; k++) {
       if (t <= st[k + 1][0]) {
         const u = (t - st[k][0]) / (st[k + 1][0] - st[k][0]); const A = st[k][1], B = st[k + 1][1];
@@ -326,10 +359,12 @@ export function perspective3DDataURL(d, result, doc = globalThis.document) {
     ctx.beginPath(); ctx.moveTo(top.sx, top.sy); ctx.lineTo(lamp.sx, lamp.sy); ctx.stroke();
     const lr = Math.max(1.2, Math.min(4.5, base.s * 0.6));
     const lg = ctx.createRadialGradient(lamp.sx, lamp.sy, 0, lamp.sx, lamp.sy, lr * 2.2);
-    lg.addColorStop(0, "rgba(255,244,210,0.8)"); lg.addColorStop(0.5, "rgba(255,222,150,0.28)"); lg.addColorStop(1, "rgba(255,210,120,0)");
+    const lc = `${LC[0]},${LC[1]},${LC[2]}`;
+    lg.addColorStop(0, `rgba(${lc},0.85)`); lg.addColorStop(0.5, `rgba(${lc},0.3)`); lg.addColorStop(1, `rgba(${lc},0)`);
     ctx.save(); ctx.globalCompositeOperation = "lighter"; ctx.fillStyle = lg;
     ctx.beginPath(); ctx.arc(lamp.sx, lamp.sy, lr * 2.2, 0, 2 * Math.PI); ctx.fill(); ctx.restore();
-    ctx.fillStyle = "#fff4d6"; ctx.beginPath(); ctx.arc(lamp.sx, lamp.sy, lr * 0.8, 0, 2 * Math.PI); ctx.fill();
+    const wc = mix(LC, white, 0.6); ctx.fillStyle = `rgb(${wc[0] | 0},${wc[1] | 0},${wc[2] | 0})`;
+    ctx.beginPath(); ctx.arc(lamp.sx, lamp.sy, lr * 0.8, 0, 2 * Math.PI); ctx.fill();
   }
 
   // --- thang màu E [lx] ---
@@ -344,6 +379,11 @@ export function perspective3DDataURL(d, result, doc = globalThis.document) {
   ctx.fillText(vn(Emax, 0), lx0 + lw + 3, ly0 + 4);
   ctx.fillText(vn((Emax + Emin) / 2, 0), lx0 + lw + 3, ly0 + lh / 2 + 4);
   ctx.fillText(vn(Emin, 0), lx0 + lw + 3, ly0 + lh + 4);
+  // nhãn nhiệt độ màu
+  ctx.fillStyle = "rgba(10,12,16,0.55)"; ctx.fillRect(10, CH - 30, 150, 22);
+  ctx.fillStyle = `rgb(${LC[0]},${LC[1]},${LC[2]})`; ctx.beginPath(); ctx.arc(22, CH - 19, 6, 0, 2 * Math.PI); ctx.fill();
+  ctx.fillStyle = "#e8ecf2"; ctx.font = "12px sans-serif"; ctx.textAlign = "left";
+  ctx.fillText(`CCT ${cctK} K` + ((d.luminaire && d.luminaire.cct) ? "" : " (mặc định)"), 34, CH - 14);
   // vignette nhẹ
   const vg = ctx.createRadialGradient(cx, CH * 0.6, CH * 0.35, cx, CH * 0.6, CH * 0.95);
   vg.addColorStop(0, "rgba(0,0,0,0)"); vg.addColorStop(1, "rgba(0,0,0,0.28)");
@@ -483,9 +523,10 @@ export function renderRoadPage(doc, { input, result, ph, meta, makeIntensity }) 
     const pw3 = 182, ph3 = pw3 * 440 / 840;
     doc.addImage(p3, "PNG", M, y, pw3, ph3);
     doc.setFontSize(7.4); doc.setTextColor(120, 130, 145);
-    doc.text("Phối cảnh minh hoạ — độ sáng vũng đèn theo độ rọi trung bình Eav = " + vn(result.E.avg, 1) + " lx.", M, y + ph3 + 3.5);
+    const cctTxt = (d.luminaire && d.luminaire.cct) ? d.luminaire.cct + " K" : "4000 K (mặc định, IES không ghi)";
+    doc.text(fitText(doc, "Mặt đường tô theo lưới độ rọi E đã tính (Emin " + vn(result.E.min, 1) + " – Emax " + vn(result.E.max, 1) + " lx); màu ánh sáng theo nhiệt độ màu CCT " + cctTxt + ".", 182), M, y + ph3 + 3.5);
     doc.setTextColor(30, 30, 40);
-    y += ph3 + 7;
+    y += ph3 + 10;
   } catch (_) { y += 2; }
 
   // Mặt bằng bố trí
@@ -517,12 +558,12 @@ export function renderRoadPage(doc, { input, result, ph, meta, makeIntensity }) 
   ], { rh: 6.0, fs: 8.6 });
   try {
     const polar = polarDataURL(ph, makeIntensity, globalThis.document);
-    doc.addImage(polar, "PNG", M + 112, y, 54, 54);
+    doc.addImage(polar, "PNG", M + 106, y - 2, 70, 70);
     doc.setFontSize(8); doc.setTextColor(90, 100, 120);
-    doc.text("Polar LDC — đỏ: C0-C180, xanh: C90-C270 (cd/klm)", M + 108, y + 58);
+    doc.text("Polar LDC (cd/klm) — đỏ: mặt dọc đường (C90–C270 IES), xanh: mặt ngang đường (C0–C180 IES)", M + 106 - 60, y + 71);
     doc.setTextColor(30, 30, 40);
   } catch (_) {}
-  y = Math.max(yAfter, y + 62) + 4;
+  y = Math.max(yAfter, y + 74) + 4;
 
   // Thông số lắp đặt (bố cục kiểu DIALux: toàn chiều rộng) + Imax + hình cần đèn
   const I = d.install, en = d.energy;
@@ -543,7 +584,7 @@ export function renderRoadPage(doc, { input, result, ph, meta, makeIntensity }) 
     ["(2) Vươn điểm sáng", vn(I.overhang, 2) + " m"],
     ["(3) Góc nghiêng cần", vn(I.tilt, 0) + "°"],
     ["(4) Chiều dài cần", vn(I.boomLength, 2) + " m"],
-    ["Trụ → mép đường (setback)", vn(I.setback, 2) + " m"],
+    ["Trụ đến mép đường (setback)", vn(I.setback, 2) + " m"],
     ["Tiêu thụ / tuyến", vn(en.Wkm, 0) + " W/km"],
     ["ULR / ULOR", "0,00 / 0,00"],
     [{ t: "Cường độ sáng max ≥ 70°", c: [40, 46, 58] }, vn(i70, 0) + " cd/klm"],
@@ -553,9 +594,10 @@ export function renderRoadPage(doc, { input, result, ph, meta, makeIntensity }) 
     ["Hệ số bảo trì MF", vn(I.MF, 2)],
   ], { rh: 6.0, fs: 8.3 });
   try { doc.addImage(armDataURL(d, globalThis.document), "PNG", M + Lcol + Vcol + 6, y - 1, 48, 38); } catch (_) {}
-  doc.setFontSize(7.2); doc.setTextColor(120, 130, 145);
-  doc.text("Imax: cường độ lớn nhất ở góc nêu (so với phương", M + Lcol + Vcol + 6, y + 42);
-  doc.text("thẳng đứng), quy về cd trên 1000 lm quang thông.", M + Lcol + Vcol + 6, y + 46);
+  doc.setFontSize(7.0); doc.setTextColor(120, 130, 145);
+  const nx0 = M + Lcol + Vcol + 6, nw = 196 - nx0;
+  ["Imax: cường độ sáng lớn nhất", "ở góc nêu so với phương", "thẳng đứng, quy về cd trên", "1000 lm quang thông (cd/klm)."]
+    .forEach((ln, k) => doc.text(fitText(doc, ln, nw), nx0, y + 42 + k * 3.6));
   doc.setTextColor(30, 30, 40);
   y = yI + 4;
   doc.setFontSize(7.8); doc.setTextColor(90, 100, 120);

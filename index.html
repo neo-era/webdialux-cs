@@ -552,6 +552,7 @@ $("btnPdf").onclick = async () => {
       renderRoadPage(doc,{input,result,ph:e.ph,makeIntensity,
         meta:{tuyen:g.meta.tuyen,model:g.meta.model||e.model||"",fitting:g.meta.fitting,
               power:g.meta.power??e.power,ncc:g.meta.ncc||e.manufac,iesName:e.name,
+              cct:(row["CCT (K)"]??row["CCT"]??"")||null, cri:(row["CRI"]??"")||null,
               autoClass:res&&res.autoClass,autoSelect:autoSel,
               classSource:res&&res.classSource}});
       made++;
@@ -590,7 +591,7 @@ async function saveXlsxBuffer(out, name){
 }
 $("mTemplate").onclick = async () => {
   $("menu").hidden = true;
-  const HEAD=["STT","Tuyến đường","Phường/Xã (mới)","Quận/Huyện (cũ)","Tủ điều khiển","SL đèn Sở duyệt (bộ)","SL đèn trình Sở (bộ)","Thời điểm thực hiện","Gói thầu","Hạng mục công tác","Chiều dài tuyến (m)","Đầu tuyến","Cuối tuyến","Bộ đèn HPS/E-LED hiện hữu","Độ cao bộ đèn (m)","Độ vươn cần đèn (m)","Đường kính đầu cần","Góc nghiêng bộ đèn (độ)","Độ rộng lòng đường (m)","Khoảng cách trụ TB (m)","Khoảng cách trụ đến mép đường (m)","Cách bố trí trụ","Dải phân cách giữa","Số làn xe","Lưu lượng xe","Loại tuyến","Fitting","Loại đèn","Nhà cung cấp","Công suất LED (W)","Cấp đường","Ltb YC (cd/m²)","Uo YC","Ul YC","TI YC (%)","SR YC","Ltb KQ (cd/m²)","Uo KQ","Ul KQ","TI KQ (%)","SR KQ","En KQ (lx)","Kết quả","Điểm Ltb","Điểm Uo","Điểm Ul","Điểm TI","Điểm SR","Tổng điểm lần 1","Tổng điểm lần 2","Xếp hạng","Loại đèn được chọn","Fitting (chọn)","Công suất (chọn)","Loại đèn (chọn)","Nhà cung cấp (chọn)"];
+  const HEAD=["STT","Tuyến đường","Phường/Xã (mới)","Quận/Huyện (cũ)","Tủ điều khiển","SL đèn Sở duyệt (bộ)","SL đèn trình Sở (bộ)","Thời điểm thực hiện","Gói thầu","Hạng mục công tác","Chiều dài tuyến (m)","Đầu tuyến","Cuối tuyến","Bộ đèn HPS/E-LED hiện hữu","Độ cao bộ đèn (m)","Độ vươn cần đèn (m)","Đường kính đầu cần","Góc nghiêng bộ đèn (độ)","Độ rộng lòng đường (m)","Khoảng cách trụ TB (m)","Khoảng cách trụ đến mép đường (m)","Cách bố trí trụ","Dải phân cách giữa","Số làn xe","Lưu lượng xe","Loại tuyến","Fitting","Loại đèn","Nhà cung cấp","Công suất LED (W)","CCT (K)","CRI","Cấp đường","Ltb YC (cd/m²)","Uo YC","Ul YC","TI YC (%)","SR YC","Ltb KQ (cd/m²)","Uo KQ","Ul KQ","TI KQ (%)","SR KQ","En KQ (lx)","Kết quả","Điểm Ltb","Điểm Uo","Điểm Ul","Điểm TI","Điểm SR","Tổng điểm lần 1","Tổng điểm lần 2","Xếp hạng","Loại đèn được chọn","Fitting (chọn)","Công suất (chọn)","Loại đèn (chọn)","Nhà cung cấp (chọn)"];
   const row=(o)=>HEAD.map(h=>(h in o)?o[h]:null);
   // r1: chỉ hình học + Loại tuyến theo tên QCVN 07 (app tự quy đổi cấp & tự chọn đèn)
   const r1=row({"STT":1,"Tuyến đường":"Đường mẫu A — xoá dòng này","Độ cao bộ đèn (m)":7.5,"Độ vươn cần đèn (m)":1.5,"Khoảng cách trụ đến mép đường (m)":0.5,"Góc nghiêng bộ đèn (độ)":15,"Độ rộng lòng đường (m)":7,"Khoảng cách trụ TB (m)":35,"Số làn xe":2,"Cách bố trí trụ":"1 bên","Dải phân cách giữa":"không","Loại tuyến":"Đường khu vực"});

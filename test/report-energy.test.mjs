@@ -59,3 +59,11 @@ test("articleNoOf: khử lặp khi [LAMP] đã chứa [LUMCAT] (ca CARINA)", asy
   // thiếu cả hai -> dùng model
   assert.equal(articleNoOf({}, { model: "X" }), "X");
 });
+
+test("cctToRGB: ấm (3000K) nhiều đỏ ít xanh dương; lạnh (6500K) xanh dương cao", async () => {
+  const { cctToRGB } = await import("../src/report.mjs");
+  const w = cctToRGB(3000), n = cctToRGB(4000), c = cctToRGB(6500);
+  assert.ok(w[2] < n[2] && n[2] < c[2], "blue tăng theo K");
+  assert.ok(w[0] === 255 && c[2] >= 245, "6500K gần trắng");
+  assert.deepEqual(cctToRGB(undefined), cctToRGB(4000), "mặc định 4000K");
+});
