@@ -456,6 +456,7 @@ export function armDataURL(d, doc = globalThis.document) {
 }
 
 // ---- Dựng PDF (trình duyệt): cần jsPDF + font Unicode + makeIntensity ----
+// Ảnh PNG luôn thêm với nén "FAST": mặc định jsPDF lưu pixel thô → PDF to gấp ~10 lần.
 const vn = (x, d = 2) => (x == null || !isFinite(x)) ? "—" : Number(x).toFixed(d).replace(".", ",");
 
 /** Cắt chữ bằng "…" cho vừa bề rộng maxW (mm) ở cỡ chữ hiện tại. */
@@ -557,7 +558,7 @@ export function renderRoadPage(doc, { input, result, ph, meta, makeIntensity }) 
   try {
     const p3 = perspective3DDataURL(d, result, globalThis.document);
     const pw3 = 182, ph3 = pw3 * 440 / 840;
-    doc.addImage(p3, "PNG", M, y, pw3, ph3);
+    doc.addImage(p3, "PNG", M, y, pw3, ph3, undefined, "FAST");
     doc.setFontSize(7.4); doc.setTextColor(120, 130, 145);
     const cctTxt = (d.luminaire && d.luminaire.cct) ? d.luminaire.cct + " K" : "4000 K (mặc định, IES không ghi)";
     const capLines = doc.splitTextToSize("Mặt đường tô theo lưới độ rọi E đã tính (Emin " + vn(result.E.min, 1) + " – Emax " + vn(result.E.max, 1) + " lx); màu ánh sáng theo nhiệt độ màu CCT " + cctTxt + ".", 182);
@@ -572,7 +573,7 @@ export function renderRoadPage(doc, { input, result, ph, meta, makeIntensity }) 
   try {
     const plan = planDataURL(d, globalThis.document);
     const pw = 150, phh = pw * 400 / 760;
-    doc.addImage(plan, "PNG", M, y, pw, phh);
+    doc.addImage(plan, "PNG", M, y, pw, phh, undefined, "FAST");
     y += phh + 5;
   } catch (_) { y += 2; }
 
@@ -595,7 +596,7 @@ export function renderRoadPage(doc, { input, result, ph, meta, makeIntensity }) 
   ], { rh: 6.0, fs: 8.6 });
   try {
     const polar = polarDataURL(ph, makeIntensity, globalThis.document);
-    doc.addImage(polar, "PNG", M + 106, y - 2, 70, 70);
+    doc.addImage(polar, "PNG", M + 106, y - 2, 70, 70, undefined, "FAST");
     doc.setFontSize(8); doc.setTextColor(90, 100, 120);
     doc.text("Polar LDC (cd/klm) — đỏ: mặt dọc đường (C90–C270 IES), xanh: mặt ngang đường (C0–C180 IES)", M + 106 - 60, y + 71);
     doc.setTextColor(30, 30, 40);
@@ -630,7 +631,7 @@ export function renderRoadPage(doc, { input, result, ph, meta, makeIntensity }) 
     ["Phân cấp cường độ sáng", "–"],
     ["Hệ số bảo trì MF", vn(I.MF, 2)],
   ], { rh: 6.0, fs: 8.3 });
-  try { doc.addImage(armDataURL(d, globalThis.document), "PNG", M + Lcol + Vcol + 6, y - 1, 48, 38); } catch (_) {}
+  try { doc.addImage(armDataURL(d, globalThis.document), "PNG", M + Lcol + Vcol + 6, y - 1, 48, 38, undefined, "FAST"); } catch (_) {}
   doc.setFontSize(7.0); doc.setTextColor(120, 130, 145);
   const nx0 = M + Lcol + Vcol + 6, nw = 196 - nx0;
   ["Imax: cường độ sáng lớn nhất", "ở góc nêu so với phương", "thẳng đứng, quy về cd trên", "1000 lm quang thông (cd/klm)."]
@@ -679,7 +680,7 @@ export function renderRoadPage(doc, { input, result, ph, meta, makeIntensity }) 
     const maxH = 78; if (ih > maxH) { ih = maxH; iw = ih / aspect; }
     if (y + ih + 14 > 288) { y = newPage(doc, d); }
     const fc = falseColorDataURL(result, globalThis.document);
-    doc.addImage(fc, "PNG", M, y, iw, ih);
+    doc.addImage(fc, "PNG", M, y, iw, ih, undefined, "FAST");
     doc.setFontSize(8); doc.text(`${vn(result.grid.S,0)} m × ${vn(result.grid.W,1)} m (dọc × ngang)`, M, y + ih + 4);
     const e = d.illum;
     drawTable(doc, M + iw + 4, y, [22, 20], [

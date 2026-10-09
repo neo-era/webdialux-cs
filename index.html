@@ -238,6 +238,7 @@ import { COLS, rowToGeometry, matchIES } from "./src/mapping.mjs";
 import { calcRoad } from "./src/engine.mjs";
 import { makeIntensity } from "./src/ies.mjs";
 import { VERSION } from "./src/version.mjs";
+import { buildPdfParts, partSubject, PDF_PER_FILE } from "./src/pdfparts.mjs";
 document.getElementById("verBadge").textContent = VERSION;
 document.getElementById("verMenu").textContent = "WebDialux-CS " + VERSION;
 
@@ -531,12 +532,13 @@ $("btnSave").onclick = async () => {
   }catch(e){ setStatus("Lỗi xuất Excel: "+e.message,true); }
 };
 
-// ---- Xuất PDF kiểu DIALux (các tuyến đang lọc, 1 trang/tuyến) ----
+// ---- Xuất PDF kiểu DIALux (các tuyến đang lọc, mỗi tuyến vài trang; chia nhiều file) ----
 $("btnPdf").onclick = async () => {
   if(!results) return;
   const idxs = visibleIndices().filter(i=>results[i].status==="ok");
   if(idxs.length===0){ setStatus("Không có tuyến tính được (theo bộ lọc) để xuất PDF.",true); return; }
   setStatus(`Đang tạo PDF ${idxs.length} tuyến…`);
+  $("btnPdf").disabled=true;
   try{
     const [rep, fontMod] = await Promise.all([ import("./src/report.mjs"), import("./src/font.mjs") ]);
     const { makeDoc, renderRoadPage, finalizeDoc } = rep; const font = fontMod.default;
@@ -545,51 +547,51 @@ $("btnPdf").onclick = async () => {
     const MF=parseFloat($("mf").value)||0.8;
     const q0=parseFloat($("q0").value)||0.08;
     const byName=new Map(iesIndex.map(e=>[e.name,e]));
-    // jsPDF dựng cả file thành 1 chuỗi → quá nhiều trang vượt giới hạn chuỗi của trình duyệt
-    // ("Invalid string length"). Chia thành nhiều file, mỗi file tối đa PDF_PER_FILE tuyến.
-    const PDF_PER_FILE=50;
-    const nParts=Math.ceil(idxs.length/PDF_PER_FILE);
-    let doc=null, made=0, inPart=0, part=0, firstIdx=null;
-    const flush=async()=>{
-      if(!doc) return;
-      part++;
-      finalizeDoc(doc); // chân trang © + Trang i/N cho mọi trang
-      const subject = made===1 ? (rows[firstIdx][COLS.tuyen]||"tuyen") : (nParts>1 ? `${idxs.length}_tuyen_phan${part}-${nParts}` : `${made}_tuyen`);
-      const blob = doc.output("blob");
-      doc=null; inPart=0;
-      const a=Object.assign(document.createElement("a"),{href:URL.createObjectURL(blob),download:outName("BaoCao", subject, "pdf")});
-      document.body.appendChild(a); a.click(); a.remove();
-      setTimeout(()=>URL.revokeObjectURL(a.href),60000);
-      await new Promise(r=>setTimeout(r,400));
-    };
-    for(const i of idxs){
-      if(inPart>=PDF_PER_FILE) await flush();
+    // khớp IES trước để số file (phan k-n) đúng với số tuyến xuất được
+    const jobs = idxs.map(i=>{
       const row=rows[i]; const g=rowToGeometry(row); const res=results[i];
       // bộ đèn: ưu tiên bộ đã chọn/đã tính (ranked: chosen; each: iesName)
       const pickName = res && (res.chosen ? res.chosen.iesName : (res.iesName || ((res.options||[])[0]||{}).iesName));
-      let e = pickName ? byName.get(pickName) : null;
-      if(!e){ const m=matchIES(g.meta, iesIndex); e=m.ies; }
-      if(!e) continue;
-      // cấp đường: dùng cấp đã xác định ở bước tính (có thể là cấp tự phân)
-      const input={...g.input, roadClass: (res&&res.roadClass)||g.input.roadClass, MF, q0, detail:true};
-      let result; try{ result=calcRoad({ies:e.ph, ...input}); }catch(_){ continue; }
-      if(!doc) doc=makeDoc({jsPDF,font}); else doc.addPage();
-      const autoSel = (res&&res.autoSelect) || (isRanked() && !g.meta.model);
-      renderRoadPage(doc,{input,result,ph:e.ph,makeIntensity,
-        meta:{tuyen:g.meta.tuyen,model:g.meta.model||e.model||"",fitting:g.meta.fitting,
-              power:g.meta.power??e.power,ncc:g.meta.ncc||e.manufac,iesName:e.name,
-              cct:(row["CCT (K)"]??row["CCT"]??"")||null, cri:(row["CRI"]??"")||null,
-              autoClass:res&&res.autoClass,autoSelect:autoSel,
-              classSource:res&&res.classSource}});
-      if(firstIdx===null) firstIdx=i;
-      made++; inPart++;
-      if(made%10===0){ setStatus(`Đang tạo PDF ${made}/${idxs.length} tuyến…`); await new Promise(r=>setTimeout(r,0)); }
-    }
-    if(made===0){ setStatus("Không tạo được trang PDF nào (thiếu IES khớp).",true); return; }
-    await flush();
-    const parts = part>1 ? ` thành ${part} file (tối đa ${PDF_PER_FILE} tuyến/file — nếu trình duyệt hỏi "tải nhiều file", chọn Cho phép)` : "";
-    setStatus(`Đã tạo PDF ${made} tuyến${parts} để tải về (nếu trình duyệt trong khung chặn tải, chạy app trên GitHub Pages/local server).`);
+      const e = (pickName && byName.get(pickName)) || matchIES(g.meta, iesIndex).ies;
+      return e ? {i,row,g,res,e} : null;
+    }).filter(Boolean);
+    if(jobs.length===0){ setStatus("Không tạo được trang PDF nào (thiếu IES khớp).",true); return; }
+    const { made, parts } = await buildPdfParts({
+      items: jobs,
+      prepare: (j)=>{
+        // cấp đường: dùng cấp đã xác định ở bước tính (có thể là cấp tự phân)
+        const input={...j.g.input, roadClass: (j.res&&j.res.roadClass)||j.g.input.roadClass, MF, q0, detail:true};
+        try{ return {...j, input, result: calcRoad({ies:j.e.ph, ...input})}; }catch(_){ return null; }
+      },
+      makeDoc: ()=>makeDoc({jsPDF,font}),
+      render: (doc,{row,g,res,e,input,result})=>{
+        const autoSel = (res&&res.autoSelect) || (isRanked() && !g.meta.model);
+        renderRoadPage(doc,{input,result,ph:e.ph,makeIntensity,
+          meta:{tuyen:g.meta.tuyen,model:g.meta.model||e.model||"",fitting:g.meta.fitting,
+                power:g.meta.power??e.power,ncc:g.meta.ncc||e.manufac,iesName:e.name,
+                cct:(row["CCT (K)"]??row["CCT"]??"")||null, cri:(row["CRI"]??"")||null,
+                autoClass:res&&res.autoClass,autoSelect:autoSel,
+                classSource:res&&res.classSource}});
+      },
+      finalize: finalizeDoc, // chân trang © + Trang i/N cho mọi trang của từng file
+      emit: async (doc,{part,nParts,total,routes,first})=>{
+        setStatus(`Đang lưu PDF phần ${part}/${nParts}…`);
+        const subject = partSubject({part,nParts,routes,total,firstName:first.row[COLS.tuyen]});
+        const blob = doc.output("blob");
+        const a=Object.assign(document.createElement("a"),{href:URL.createObjectURL(blob),download:outName("BaoCao", subject, "pdf")});
+        document.body.appendChild(a); a.click(); a.remove();
+        setTimeout(()=>URL.revokeObjectURL(a.href),10000);
+        await new Promise(r=>setTimeout(r,400));
+      },
+      onPrepare: async (n,total)=>{ if(n%10===0||n===total){ setStatus(`Đang tính chi tiết ${n}/${total} tuyến…`); await new Promise(r=>setTimeout(r,0)); } },
+      onProgress: async (n)=>{ if(n%10===0){ setStatus(`Đang tạo PDF ${n}/${jobs.length} tuyến…`); await new Promise(r=>setTimeout(r,0)); } },
+    });
+    if(made===0){ setStatus("Không tạo được trang PDF nào (lỗi tính toán).",true); return; }
+    const partsTxt = parts>1 ? ` thành ${parts} file (tối đa ${PDF_PER_FILE} tuyến/file — nếu trình duyệt hỏi "tải nhiều file", chọn Cho phép)` : "";
+    const skipped=idxs.length-made;
+    setStatus(`Đã tạo PDF ${made} tuyến${partsTxt}${skipped?` — bỏ qua ${skipped} tuyến (thiếu IES/lỗi tính)`:""} để tải về (nếu trình duyệt trong khung chặn tải, chạy app trên GitHub Pages/local server).`);
   }catch(e){ setStatus("Lỗi xuất PDF: "+e.message,true); }
+  finally{ $("btnPdf").disabled=false; }
 };
 
 if(!hasFSA) $("note").textContent="Trình duyệt không hỗ trợ ghi trực tiếp (File System Access). Dùng Chrome/Edge trên GitHub Pages để ghi đè file gốc; nếu không, kết quả sẽ tải về dạng file mới.";
