@@ -1,7 +1,7 @@
 {
   "name": "webdialux-cs",
-  "version": "1.0.0",
-  "description": "Mô phỏng chiếu sáng đường kiểu DIALux theo QCVN 07-7:2023 — lõi engine CIE 140 (vòng 1)",
+  "version": "1.1.0",
+  "description": "Mô phỏng chiếu sáng đường theo QCVN 07-7:2023 — engine CIE 140, tự phân cấp đường, chấm điểm & chọn đèn tối ưu đa phương án",
   "type": "module",
   "scripts": {
     "test": "node --test"
