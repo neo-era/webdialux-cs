@@ -1,7 +1,8 @@
 // Chia báo cáo PDF nhiều tuyến thành nhiều file.
 // jsPDF dựng cả file thành một chuỗi; vài trăm tuyến (mỗi tuyến ~3 trang) có thể vượt giới hạn
-// chuỗi của trình duyệt ("Invalid string length"). 50 tuyến/file ≈ 5–10 MB (ảnh nén FAST).
-export const PDF_PER_FILE = 50;
+// chuỗi của trình duyệt ("Invalid string length"). ảnh nén FAST ~0,15–0,22 MB/tuyến
+// → 300 tuyến/file ≈ 45–65 MB, dưới mức 100 MB/file có biên an toàn.
+export const PDF_PER_FILE = 300;
 
 /**
  * Dựng PDF theo lô, mỗi lô tối đa perFile tuyến (1 item = 1 tuyến, render có thể thêm nhiều trang).

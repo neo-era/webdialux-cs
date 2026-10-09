@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { jsPDF } from "jspdf";
@@ -18,7 +18,7 @@ function fakeDoc() { return { pages: [], addPage() {}, finalized: false }; }
 async function runFake(items, opts = {}) {
   const files = [];
   const r = await buildPdfParts({
-    items,
+    items, perFile: 50, // logic chia lô kiểm với lô 50 cho dễ đọc
     prepare: (it) => (it.skip ? null : it),
     makeDoc: fakeDoc,
     render: (doc, it) => doc.pages.push(it.name),
@@ -30,7 +30,12 @@ async function runFake(items, opts = {}) {
 }
 const mk = (n) => Array.from({ length: n }, (_, i) => ({ name: "T" + (i + 1) }));
 
-test("mặc định 50 tuyến/file", () => assert.equal(PDF_PER_FILE, 50));
+test("mặc định 300 tuyến/file; 786 tuyến → 3 file (300 + 300 + 186)", async () => {
+  assert.equal(PDF_PER_FILE, 300);
+  const files = [];
+  await buildPdfParts({ items: mk(786), prepare: (x) => x, makeDoc: fakeDoc, render: (d, x) => d.pages.push(x.name), finalize() {}, emit: (d, info) => files.push([info.part, info.nParts, d.pages.length]) });
+  assert.deepEqual(files, [[1, 3, 300], [2, 3, 300], [3, 3, 186]]);
+});
 
 test("786 tuyến → 16 file: 15×50 + 36, tổng 786, mỗi file đã finalize", async () => {
   const { r, files } = await runFake(mk(786));
@@ -108,20 +113,21 @@ test("jsPDF thật: mỗi file có đúng số trang của lô (finalizeDoc đá
   assert.deepEqual(pages, [3, 3, 1]);
 });
 
-test("báo cáo thật: 1 file 50 tuyến (~3 trang/tuyến, hình học khác nhau) < 20 MB (ảnh nén FAST)", { timeout: 120000 }, async () => {
+test("báo cáo thật: 1 file đủ 300 tuyến (4 IES khác nhau, hình học khác nhau) < 100 MB", { timeout: 300000 }, async () => {
   globalThis.document ??= { createElement: () => createCanvas(1, 1) };
-  const ph = parseIES(readFileSync(join(here, "fixtures/MAGNOLIA-60W.ies"), "utf8"));
+  const iesDir = join(here, "../data/ies");
+  const phs = readdirSync(iesDir).filter((f) => f.endsWith(".ies")).map((f) => parseIES(readFileSync(join(iesDir, f), "utf8")));
   const base = { H: 7.5, overhang: 1.0, spacing: 35, width: 7, lanes: 2, tilt: 15, MF: 0.8, roadClass: "D1", detail: true };
   const sizes = [];
   await buildPdfParts({
-    items: Array.from({ length: 50 }, (_, i) => ({ ...base, spacing: 25 + (i % 20), width: 6 + (i % 5) })),
-    prepare: (input) => ({ input, result: calcRoad({ ies: ph, ...input }) }),
+    items: Array.from({ length: PDF_PER_FILE }, (_, i) => ({ ph: phs[i % phs.length], input: { ...base, H: 7 + (i % 5), spacing: 25 + (i % 20), width: 6 + (i % 7) } })),
+    prepare: ({ ph, input }) => ({ ph, input, result: calcRoad({ ies: ph, ...input }) }),
     makeDoc: () => makeDoc({ jsPDF, font }),
-    render: (doc, { input, result }) => renderRoadPage(doc, { input, result, ph, makeIntensity, meta: { tuyen: "T", model: "MAGNOLIA", power: 60 } }),
+    render: (doc, { ph, input, result }) => renderRoadPage(doc, { input, result, ph, makeIntensity, meta: { tuyen: "T", model: "MAGNOLIA", power: 60 } }),
     finalize: finalizeDoc,
     emit: (doc, info) => { sizes.push({ routes: info.routes, pages: doc.getNumberOfPages(), mb: doc.output().length / 1e6 }); },
   });
-  assert.equal(sizes.length, 1); assert.equal(sizes[0].routes, 50); assert.ok(sizes[0].pages >= 50);
-  console.log(`50 tuyến: ${sizes[0].pages} trang, ${sizes[0].mb.toFixed(1)} MB`);
-  assert.ok(sizes[0].mb < 20, `${sizes[0].mb.toFixed(1)} MB`);
+  assert.equal(sizes.length, 1); assert.equal(sizes[0].routes, PDF_PER_FILE);
+  console.log(`${PDF_PER_FILE} tuyến: ${sizes[0].pages} trang, ${sizes[0].mb.toFixed(1)} MB`);
+  assert.ok(sizes[0].mb < 100, `${sizes[0].mb.toFixed(1)} MB`);
 });
