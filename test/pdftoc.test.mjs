@@ -153,3 +153,18 @@ test("tên tuyến rất dài vẫn nằm gọn trong ô (thu chữ/cắt …), 
   const cs = items.find((x) => x.str === "Cấp"); // tiêu đề cột kế bên
   assert.ok(longItem.transform[4] + longItem.width <= cs.transform[4] - 1, "không tràn sang cột Cấp");
 });
+
+test("trang PDF: dòng 'Fitting (theo dữ liệu tuyến)' + cảnh báo khi đèn tính khác công suất dòng ghi", async () => {
+  const doc = makeDoc({ jsPDF, font }); const j = jobs(1)[0];
+  renderRoadPage(doc, { input: j.input, result: j.result, ph, makeIntensity,
+    meta: { ...meta(j), fitting: "1 x LED SL MAGNOLIA BL-STR16C PD24A 140W", iesNote: "Dữ liệu tuyến ghi 140 W — thư mục IES không có, dùng 120 W (gần nhất)." } });
+  finalizeDoc(doc);
+  const { text } = await open(new Uint8Array(doc.output("arraybuffer")));
+  const all = text.join("\n");
+  assert.match(all, /Fitting \(theo dữ liệu tuyến\)\s+1 x LED SL MAGNOLIA BL-STR16C PD24A 140W/);
+  assert.match(all, /Lưu ý: Dữ liệu tuyến ghi 140 W — thư mục IES không có, dùng 120 W \(gần nhất\)\./);
+  const doc2 = makeDoc({ jsPDF, font });
+  renderRoadPage(doc2, { input: j.input, result: j.result, ph, makeIntensity, meta: meta(j) });
+  const t2 = (await open(new Uint8Array(doc2.output("arraybuffer")))).text.join("\n");
+  assert.ok(!/Lưu ý: Dữ liệu tuyến/.test(t2), "không lệch → không cảnh báo");
+});

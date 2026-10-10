@@ -76,3 +76,10 @@ test("index.html: xuất PDF dựng mục lục (addToc) trước finalizeDoc, t
   assert.match(html, /addToc\(doc, info\.entries, info\); finalizeDoc\(doc\)/);
   assert.match(html, /lamp: luminaireLabel\(e\.name\)/);
 });
+
+test("index.html: mục lục + trang PDF lấy đèn từ pickReportIes; CS mục lục = CS file IES đã tính", () => {
+  assert.match(html, /pickReportIes\(res, g\.meta, iesIndex\)/);
+  assert.match(html, /power: e\.power \?\? null/);
+  assert.match(html, /iesNote: note/);
+  assert.doesNotMatch(html, /\(res\.options\|\|\[\]\)\)\[0\]/, "không còn lấy options[0]");
+});

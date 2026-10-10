@@ -28,6 +28,7 @@ export function reportData(input, result, ph, meta = {}) {
       articleNo: articleNoOf(ph, meta),
       articleName: luminaireLabel(meta.iesName) || ph.luminaireName || "", // tên nhà cung cấp đặt (= tên file IES), như Excel
       iesDesc: ph.luminaireName || "", iesFile: meta.iesName || "",
+      iesNote: meta.iesNote || "", // cảnh báo: đèn đã tính khác công suất dòng dữ liệu ghi
       fitting: meta.fitting || "", ncc: meta.ncc || ph.manufac || "",
       P: ph.inputWatts,
       phiLamp: ph.totalLumens, phiLum: ph.totalLumens, // LED: ΦLuminaire ≈ ΦLamp
@@ -667,7 +668,7 @@ export function renderRoadPage(doc, { input, result, ph, meta, makeIntensity }) 
     ["Tên bộ đèn", L.articleName || L.model || "—"],
     ["Mô tả trong IES", L.iesDesc || "—"],
     ["File IES", L.iesFile || "—"],
-    ["Fitting", L.fitting || "—"],
+    ["Fitting (theo dữ liệu tuyến)", L.fitting || "—"],
     ["Công suất P", vn(L.P, 1) + " W"],
     ["Quang thông bóng ΦLamp", vn(L.phiLamp, 0) + " lm"],
     ["Quang thông bộ đèn ΦLum", vn(L.phiLum, 0) + " lm"],
@@ -684,6 +685,12 @@ export function renderRoadPage(doc, { input, result, ph, meta, makeIntensity }) 
     doc.setTextColor(30, 30, 40);
   } catch (_) {}
   y = Math.max(yAfter, y + 74) + 4;
+  if (L.iesNote) {
+    doc.setFontSize(8.4); doc.setTextColor(...BAD_RGB);
+    const ln = doc.splitTextToSize("Lưu ý: " + L.iesNote, 182);
+    doc.text(ln, M, y); y += ln.length * 3.8 + 2;
+    doc.setTextColor(30, 30, 40);
+  }
 
   // Thông số lắp đặt (bố cục kiểu DIALux: toàn chiều rộng) + Imax + hình cần đèn
   const I = d.install, en = d.energy;

@@ -263,7 +263,7 @@ a{color:var(--accent)}
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js"></script>
 <script type="module">
-import { buildIesIndex, runBatch, runBatchRanked, runChunked } from "./src/batch.mjs";
+import { buildIesIndex, runBatch, runBatchRanked, runChunked, pickReportIes } from "./src/batch.mjs";
 import { COLS, rowToGeometry, matchIES, luminaireLabel } from "./src/mapping.mjs";
 import { calcRoad } from "./src/engine.mjs";
 import { makeIntensity } from "./src/ies.mjs";
@@ -599,14 +599,13 @@ $("btnPdf").onclick = async () => {
     if(!jsPDF){ setStatus("Chưa tải được thư viện jsPDF (kiểm tra mạng/CDN).",true); return; }
     const MF=parseFloat($("mf").value)||0.8;
     const q0=parseFloat($("q0").value)||0.08;
-    const byName=new Map(iesIndex.map(e=>[e.name,e]));
     // khớp IES trước để số file (phan k-n) đúng với số tuyến xuất được
     const jobs = idxs.map(i=>{
       const row=rows[i]; const g=rowToGeometry(row); const res=results[i];
       // bộ đèn: ưu tiên bộ đã chọn/đã tính (ranked: chosen; each: iesName)
-      const pickName = res && (res.chosen ? res.chosen.iesName : (res.iesName || ((res.options||[])[0]||{}).iesName));
-      const e = (pickName && byName.get(pickName)) || matchIES(g.meta, iesIndex).ies;
-      return e ? {i,row,g,res,e} : null;
+      // một nguồn cho cả mục lục + trang PDF: đèn được chọn, hoặc (không đèn nào Đạt) đúng đèn dòng chỉ định
+      const pk = pickReportIes(res, g.meta, iesIndex) || (() => { const m = matchIES(g.meta, iesIndex).ies; return m ? { e: m, note: "" } : null; })();
+      return pk ? {i,row,g,res,e:pk.e,note:pk.note} : null;
     }).filter(Boolean);
     if(jobs.length===0){ setStatus("Không tạo được trang PDF nào (thiếu IES khớp).",true); return; }
     const { made, parts } = await buildPdfParts({
@@ -617,17 +616,17 @@ $("btnPdf").onclick = async () => {
         try{ return {...j, input, result: calcRoad({ies:j.e.ph, ...input})}; }catch(_){ return null; }
       },
       makeDoc: ()=>makeDoc({jsPDF,font}),
-      render: (doc,{row,g,res,e,input,result})=>{
+      render: (doc,{row,g,res,e,note,input,result})=>{
         const autoSel = (res&&res.autoSelect) || (isRanked() && !g.meta.model);
         const r = renderRoadPage(doc,{input,result,ph:e.ph,makeIntensity,
           meta:{tuyen:g.meta.tuyen,model:g.meta.model||e.model||"",fitting:g.meta.fitting,
-                power:g.meta.power??e.power,ncc:g.meta.ncc||e.manufac,iesName:e.name,
+                power:e.power??g.meta.power,ncc:g.meta.ncc||e.manufac,iesName:e.name,iesNote: note,
                 cct:(row["CCT (K)"]??row["CCT"]??"")||null, cri:(row["CRI"]??"")||null,
                 autoClass:res&&res.autoClass,autoSelect:autoSel,
                 classSource:res&&res.classSource}});
         // dòng mục lục của tuyến (tên bộ đèn = tên file IES, như Excel)
         return { stt: g.meta.stt ?? row[COLS.stt] ?? "", tuyen: g.meta.tuyen, roadClass: result.roadClass || input.roadClass,
-          lamp: luminaireLabel(e.name), power: g.meta.power ?? e.power ?? null, pass: result.pass, ...r };
+          lamp: luminaireLabel(e.name), power: e.power ?? null, pass: result.pass, ...r }; // CS = file IES đã tính
       },
       // mục lục + bookmark (mỗi file riêng), rồi chân trang © + Trang i/N tính cả trang mục lục
       finalize: (doc, info) => { addToc(doc, info.entries, info); finalizeDoc(doc); },

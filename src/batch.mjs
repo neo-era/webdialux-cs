@@ -187,3 +187,42 @@ export async function runChunked(fn, rows, iesIndex, opts = {}, { chunk = 25, on
   }
   return out;
 }
+
+// token chữ+số ≥ 3 ký tự để so tên file IES với chữ Fitting/Loại đèn của dòng (vd STR16C, PD24A)
+const tokens = (s) => (normKeyLoose(s).match(/[A-Z0-9]{3,}/g) || []);
+function normKeyLoose(s) { return String(s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toUpperCase(); }
+
+/**
+ * Bộ đèn dùng cho báo cáo PDF + mục lục của 1 tuyến (một nguồn duy nhất để hai nơi luôn khớp).
+ * - có đèn được chọn (Đạt) → đèn đó; Từng phương án → đèn đã tính (res.iesName)
+ * - Đa phương án mà không đèn nào Đạt → đèn ĐÚNG như dòng chỉ định: cùng công suất, không có thì gần nhất;
+ *   dòng không ghi công suất → công suất lớn nhất đã thử. (Trước đây lấy options[0] = đèn NHỎ nhất.)
+ * - nhiều file cùng công suất → ưu tiên file khớp nhiều token với Fitting/Loại đèn của dòng.
+ * Trả { e, note } (note = cảnh báo khi công suất khác dòng ghi) hoặc null khi tuyến không có đèn để in.
+ */
+export function pickReportIes(res, meta = {}, iesIndex = []) {
+  if (!res || res.status !== "ok") return null;
+  const byName = new Map(iesIndex.map((x) => [x.name, x]));
+  const want = meta.power ?? null;
+  const W = (p) => `${p} W`;
+  let e = null, how = "";
+  if (res.chosen) { e = byName.get(res.chosen.iesName); how = "chosen"; }
+  else if (res.iesName) { e = byName.get(res.iesName); how = "row"; }
+  else {
+    const tried = (res.options || []).map((o) => byName.get(o.iesName)).filter((x) => x && x.power != null);
+    if (tried.length === 0) return null;
+    const tk = new Set([...tokens(meta.fitting), ...tokens(meta.model)]);
+    const fit = (x) => tokens(x.name).filter((t) => tk.has(t)).length;
+    const dist = (x) => (want == null ? -x.power : Math.abs(x.power - want)); // không ghi CS → lớn nhất trước
+    e = tried.slice().sort((a, b) => dist(a) - dist(b) || fit(b) - fit(a))[0];
+    how = "row";
+  }
+  if (!e) return null;
+  let note = "";
+  if (want != null && e.power !== want) {
+    note = how === "chosen"
+      ? `Dữ liệu tuyến ghi ${W(want)} — app chọn ${W(e.power)} (công suất nhỏ nhất vẫn Đạt).`
+      : `Dữ liệu tuyến ghi ${W(want)} — thư mục IES không có, dùng ${W(e.power)} (gần nhất).`;
+  }
+  return { e, note };
+}

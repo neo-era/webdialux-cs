@@ -1,6 +1,6 @@
 {
   "name": "webdialux-cs",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "description": "Mô phỏng chiếu sáng đường theo QCVN 07-7:2023 — engine CIE 140, tự phân cấp đường, chấm điểm & chọn đèn tối ưu đa phương án",
   "type": "module",
   "scripts": {
