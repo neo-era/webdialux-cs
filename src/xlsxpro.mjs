@@ -6,7 +6,7 @@
 // Sheet 3 "Theo tuyến"        : 1 dòng/tuyến với bộ đèn chọn + chỉ tiêu + kết luận.
 
 import { VERSION } from "./version.mjs";
-import { rowToGeometry } from "./mapping.mjs";
+import { rowToGeometry, luminaireLabel } from "./mapping.mjs";
 
 /**
  * Chuẩn hoá kết quả chế độ TỪNG PHƯƠNG ÁN (runBatch: 1 đèn/tuyến) về cùng hình dạng
@@ -47,7 +47,7 @@ const arrLbl = (a) => /đối xứng|doi xung/i.test(a || "") ? "hai bên đối
 const nSideOf = (a) => /đối xứng|doi xung|so le|staggered/i.test(a || "") ? 2 : 1;
 const raw = (x) => (x == null || !isFinite(x)) ? null : x;
 const F = (formula, result) => ({ formula, result: result ?? "" });
-const cleanIes = (s) => String(s || "").replace(/_IESNA2002\.IES$/i, "").replace(/\.ies$/i, "");
+const cleanIes = luminaireLabel; // cùng tên bộ đèn với PDF
 
 /** Ước tính số bộ đèn 1 tuyến: ưu tiên cột SL trong Excel, không có thì ceil(L/S)·nSide. */
 export function estimateLampCount(row, input) {
@@ -58,14 +58,15 @@ export function estimateLampCount(row, input) {
   return { n: null, src: "" };
 }
 
-/** Gộp bộ đèn ĐƯỢC CHỌN theo Hãng · Loại · CS. Trả mảng đã sắp theo công suất tăng dần. */
+/** Gộp bộ đèn ĐƯỢC CHỌN theo Hãng · tên bộ đèn (tên file IES, như PDF) · CS. Trả mảng đã sắp theo công suất tăng dần. */
 export function summarizeLuminaires(results, rows = []) {
   const map = new Map();
   results.forEach((r, i) => {
     if (r.status !== "ok" || !r.chosen) return;
-    const o = r.chosen, key = `${o.manufac || "—"}|${o.model || cleanIes(o.iesName)}|${o.power ?? ""}`;
+    // khoá không phân biệt hoa/thường — Excel so "=" trong công thức sheet 2 cũng vậy
+    const o = r.chosen, name = cleanIes(o.iesName) || o.model || "", key = `${o.manufac || "—"}|${name}|${o.power ?? ""}`.toLowerCase();
     const { n } = estimateLampCount(rows[i], r.input);
-    if (!map.has(key)) map.set(key, { manufac: o.manufac || "—", model: o.model || cleanIes(o.iesName), power: o.power ?? null, routes: 0, lamps: 0, lampsKnown: true, kW: 0, tuyen: [] });
+    if (!map.has(key)) map.set(key, { manufac: o.manufac || "—", model: name, power: o.power ?? null, routes: 0, lamps: 0, lampsKnown: true, kW: 0, tuyen: [] });
     const g = map.get(key); g.routes++; g.tuyen.push(r.tuyen || `STT ${r.stt ?? i + 1}`);
     if (n != null) { g.lamps += n; g.kW += n * (o.power || 0) / 1000; } else g.lampsKnown = false;
   });
@@ -163,7 +164,7 @@ export async function buildResultWorkbook(ExcelJS, { results, rows = [], q0 = 0.
         F(`IF(${P(n)},"",1+SUMPRODUCT((${rg("AC")}="ĐẠT")*((${rg("U")}<U${n})+${eqU}*(${rg("AI")}>AI${n})+${eqU}*${eqT1}*(${rg("AJ")}>AJ${n})+${eqU}*${eqT1}*(${rg("AJ")}=AJ${n})*(${rg("W")}>W${n})))${tieAbove(n)})`, o.rank),
         F(`IF(AK${n}=1,"✓","")`, o.chosen ? "✓" : ""),
       ] : [null, null, null, null, null, null, null, F(`IF(AC${n}="ĐẠT",1,"")`, o.rank), F(`IF(AC${n}="ĐẠT","✓","")`, o.chosen ? "✓" : "")];
-      const row = ws.addRow([...(k === 0 ? head : blank), o.manufac || "", o.model || cleanIes(o.iesName), o.power ?? null, cleanIes(o.iesName),
+      const row = ws.addRow([...(k === 0 ? head : blank), o.manufac || "", o.model || cleanIes(o.iesName), o.power ?? null, cleanIes(o.iesName) || o.model || "", // cột V = tên bộ đèn (sheet 3 & 2 tra theo cột này)
         raw(o.Ltb), raw(o.Uo), raw(o.Ul), raw(o.TI), raw(o.SR), raw(o.En), kq, ...score]);
       styleBody(row, zebra); mark(row.getCell(29), o.pass);
       if (o.chosen) { row.eachCell({ includeEmpty: true }, (c) => { c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: C.chosen } }; }); row.getCell(20).font = { bold: true, size: 10 }; row.getCell(38).font = { bold: true, size: 11, color: { argb: C.okTxt } }; row.getCell(38).alignment = { horizontal: "center" }; mark(row.getCell(29), true); }
@@ -179,7 +180,7 @@ export async function buildResultWorkbook(ExcelJS, { results, rows = [], q0 = 0.
   // ===== Sheet 2: Tổng hợp đèn =====
   const sum = summarizeLuminaires(results, rows);
   const ws2 = wb.addWorksheet("Tổng hợp đèn", { views: [{ state: "frozen", ySplit: 4 }] });
-  const H2 = ["STT", "Nhà sản xuất", "Loại đèn (mã)", "Công suất (W)", "Số tuyến", "Số bộ đèn", "Tổng công suất (kW)", "Các tuyến áp dụng"];
+  const H2 = ["STT", "Nhà sản xuất", "Bộ đèn", "Công suất (W)", "Số tuyến", "Số bộ đèn", "Tổng công suất (kW)", "Các tuyến áp dụng"];
   title(ws2, "BẢNG TỔNG HỢP BỘ ĐÈN ĐƯỢC CHỌN — theo nhà sản xuất · loại · công suất", sub, H2.length);
   ws2.getRow(3).height = 6; styleHeader(ws2.addRow(H2));
   [6, 22, 36, 14, 10, 12, 18, 70].forEach((w, i) => { ws2.getColumn(i + 1).width = w; });
@@ -220,7 +221,7 @@ export async function buildResultWorkbook(ExcelJS, { results, rows = [], q0 = 0.
     const pick = (c, v) => gr ? F(`IFERROR(IF(${at(c)}="","",${at(c)}),"")`, v ?? "") : (v ?? null); // ô trống không hiện thành 0
     const kq = r.status !== "ok" ? r.status : gr ? F(`IF(COUNTIF('Chấm điểm chi tiết'!$AL$${gr.a}:$AL$${gr.b},"✓")>0,"ĐẠT","KHÔNG ĐẠT")`, o ? "ĐẠT" : "KHÔNG ĐẠT") : (o ? "ĐẠT" : "KHÔNG ĐẠT");
     const row = ws3.addRow([r.stt ?? "", r.tuyen ?? "", r.roadClass ?? "", m.loaituyen || "", r1(g.spacing), r1(g.width), r1(g.H), arrLbl(g.arrangement),
-      pick("T", o ? (o.model || cleanIes(o.iesName)) : ""), pick("S", o ? (o.manufac || "") : ""), pick("U", o ? o.power : null), n,
+      pick("V", o ? (cleanIes(o.iesName) || o.model || "") : ""), pick("S", o ? (o.manufac || "") : ""), pick("U", o ? o.power : null), n,
       pick("W", o ? raw(o.Ltb) : null), pick("X", o ? raw(o.Uo) : null), pick("Y", o ? raw(o.Ul) : null), pick("Z", o ? raw(o.TI) : null), pick("AA", o ? raw(o.SR) : null), pick("AB", o ? raw(o.En) : null),
       kq]);
     styleBody(row, i % 2 === 1); mark(row.getCell(19), !!o && r.status === "ok");

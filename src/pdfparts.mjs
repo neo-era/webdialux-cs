@@ -18,18 +18,20 @@ export async function buildPdfParts({ items, perFile = PDF_PER_FILE, prepare, ma
     if (onPrepare) await onPrepare(k + 1, items.length);
   }
   const total = ready.length, nParts = Math.ceil(total / perFile);
-  let doc = null, inPart = 0, part = 0, made = 0, first = null;
+  let doc = null, inPart = 0, part = 0, made = 0, first = null, entries = [];
   const flush = async () => {
     if (!doc) return;
     part++;
-    finalize(doc);
-    await emit(doc, { part, nParts, total, routes: inPart, first });
-    doc = null; inPart = 0; first = null;
+    // entries = giá trị render trả về cho từng tuyến (dùng dựng mục lục); from/to = vị trí tuyến trong tổng
+    const info = { part, nParts, total, routes: inPart, first, entries, from: made - inPart + 1, to: made };
+    finalize(doc, info);
+    await emit(doc, info);
+    doc = null; inPart = 0; first = null; entries = [];
   };
   for (const { item, p } of ready) {
     if (inPart >= perFile) await flush();
     if (!doc) doc = makeDoc(); else doc.addPage();
-    render(doc, p);
+    entries.push(render(doc, p));
     if (first === null) first = item;
     made++; inPart++;
     if (onProgress) await onProgress(made);

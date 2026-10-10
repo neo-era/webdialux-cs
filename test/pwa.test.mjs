@@ -60,3 +60,19 @@ test("index.html: đăng ký SW có điều kiện + thanh 'Có bản mới'", (
   assert.match(html, /id="updBar"[^>]*hidden/);
   assert.match(html, /SKIP_WAITING/);
 });
+
+test("PWA chuẩn: nút 'Cài đặt ứng dụng' (beforeinstallprompt), hướng dẫn iOS, meta Apple", () => {
+  assert.match(html, /<meta name="apple-mobile-web-app-capable" content="yes">/);
+  assert.match(html, /<meta name="apple-mobile-web-app-title" content="WebDialux">/);
+  assert.match(html, /<meta name="mobile-web-app-capable" content="yes">/);
+  assert.match(html, /id="mInstall"[^>]*hidden/);
+  assert.match(html, /id="mIosHint"[^>]*hidden/);
+  assert.match(html, /addEventListener\("beforeinstallprompt"/);
+  assert.match(html, /addEventListener\("appinstalled"/);
+  assert.match(html, /Thêm vào MH chính/);
+});
+
+test("index.html: xuất PDF dựng mục lục (addToc) trước finalizeDoc, tên bộ đèn qua luminaireLabel", () => {
+  assert.match(html, /addToc\(doc, info\.entries, info\); finalizeDoc\(doc\)/);
+  assert.match(html, /lamp: luminaireLabel\(e\.name\)/);
+});

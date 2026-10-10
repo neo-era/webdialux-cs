@@ -84,3 +84,28 @@ test("toRankedShape: kết quả Từng phương án (runBatch) xuất được 
   let tong = false; wb.getWorksheet("Tổng hợp đèn").eachRow((row) => { if (row.getCell(2).value === "TỔNG CỘNG") tong = true; });
   assert.ok(tong);
 });
+
+test("tên bộ đèn thống nhất với PDF: Tổng hợp đèn gộp theo tên file IES (luminaireLabel)", async () => {
+  const { luminaireLabel } = await import("../src/mapping.mjs");
+  const s = summarizeLuminaires(results, rows);
+  const want = new Set(results.filter((r) => r.status === "ok" && r.chosen).map((r) => luminaireLabel(r.chosen.iesName)));
+  assert.deepEqual(new Set(s.map((g) => g.model)), want);
+  for (const g of s) assert.ok(!/\.ies$|_IESNA2002/i.test(g.model), g.model);
+});
+
+test("Tổng hợp đèn: tên khác chữ hoa/thường gộp 1 nhóm (Excel so = không phân biệt hoa thường); đèn thiếu tên file vẫn đếm đúng", async () => {
+  const { createRequire } = await import("node:module");
+  const { HyperFormula } = await import("hyperformula");
+  const fake = (iesName, model) => { const o = { iesName, model, manufac: "ACME", power: 60, Ltb: 1, Uo: 0.5, Ul: 0.6, TI: 10, SR: 0.6, En: 15, pass: true, d_Ltb: 1, d_Uo: 1, d_Ul: 1, d_TI: 1, d_SR: 1, tong1: 5, tong2: 0, rank: 1, chosen: true };
+    return { status: "ok", stt: 1, tuyen: "T", roadClass: "D1", input: { spacing: 30, width: 7, H: 8, arrangement: "1 bên" }, meta: {}, req: { Ltb: 0.7, Uo: 0.4, Ul: 0.4, TI: 20, SR: 0.5 }, options: [o], chosen: o }; };
+  const res = [fake("Led-A_60W.ies", "LED"), fake("LED-A_60W.IES", "LED"), fake(null, "NOFILE"), fake(null, "NOFILE")];
+  const rw = res.map(() => ({ "SL đèn trình Sở (bộ)": 10 }));
+  const s = summarizeLuminaires(res, rw);
+  assert.deepEqual(s.map((g) => [g.model.toUpperCase(), g.routes]).sort(), [["LED-A_60W", 2], ["NOFILE", 2]]);
+  const wb = await buildResultWorkbook(ExcelJS, { results: res, rows: rw });
+  const sheets = {};
+  for (const ws of wb.worksheets) { const d = []; ws.eachRow({ includeEmpty: true }, (row, r) => { const l = []; row.eachCell({ includeEmpty: true }, (c, col) => { const v = c.isMerged && c.master !== c ? null : c.value; l[col - 1] = v && typeof v === "object" && "formula" in v ? "=" + v.formula : v; }); d[r - 1] = Array.from(l, (x) => x ?? null); }); sheets[ws.name] = Array.from(d, (x) => x ?? []); }
+  const hf = HyperFormula.buildFromSheets(sheets, { licenseKey: "gpl-v3", useArrayArithmetic: true });
+  const sid = hf.getSheetId("Tổng hợp đèn");
+  s.forEach((g, i) => assert.equal(hf.getCellValue({ sheet: sid, row: 4 + i, col: 4 }), g.routes, `công thức số tuyến ${g.model}`));
+});

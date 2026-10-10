@@ -67,3 +67,11 @@ Mục tiêu: sửa số trong Excel → Kết quả/điểm/hạng/✓/tổng h�
   - SW mới chờ (waiting) → trang hiện thanh "Có bản mới — Tải lại"; bấm → `SKIP_WAITING` → `controllerchange` → reload.
 - Đăng ký SW chỉ khi `serviceWorker` có và không phải `file://`.
 - Kiểm chứng: test/pwa.test.mjs (manifest, icon đúng kích thước, danh sách precache đủ file thật, VERSION khớp); E2E puppeteer: installability (CDP), offline reload → nạp Excel/IES, Chạy, xuất Excel/PDF; đổi VERSION của sw.js → hiện thanh bản mới.
+
+## Mục lục PDF + tên bộ đèn thống nhất (v1.9)
+- Mục lục: dựng xong các trang tuyến trước (ghi trang bắt đầu từng tuyến + trang từng phần), rồi chèn K trang mục lục vào đầu file (`doc.insertPage`), cộng K vào mọi số trang đã ghi; vẽ mục lục + link nội bộ (`doc.link`) + bookmark (`doc.outline`). Chạy trong mỗi lô của `buildPdfParts` (mỗi file mục lục riêng, tiêu đề "phần k/n"); 1 tuyến → không có trang mục lục, chỉ bookmark. `finalizeDoc` chạy sau cùng nên "Trang i/N" tính cả mục lục.
+- Tên bộ đèn: một hàm `luminaireLabel(iesName)` (bỏ `.ies` và `_IESNA2002`) dùng chung cho PDF (dòng "Tên bộ đèn") và Excel (`cleanIes`). `[LUMINAIRE]` của IES chuyển xuống dòng "Mô tả trong IES"; thêm dòng "File IES" (tên đầy đủ).
+- PWA: nút "Cài đặt ứng dụng" trong menu (`beforeinstallprompt`), hướng dẫn iOS (Chia sẻ → Thêm vào MH chính), meta apple-mobile-web-app-*. Sự kiện có thể đến trước khi module chạy → script nhỏ trong `<head>` giữ ở `window.__installEvt`; iOS luôn ẩn nút (không có prompt), chỉ hiện hướng dẫn Safari.
+- Excel sheet 2 gộp theo tên bộ đèn **không phân biệt hoa/thường** (Excel so `=` cũng vậy → tránh đếm đôi); cột V sheet 1 = tên bộ đèn (rơi về model nếu thiếu file) để sheet 3/2 luôn tra được. Hai file IES khác nhau cùng hãng·model·CS giờ là 2 dòng riêng (trước gộp theo model).
+- Mục lục: 36 dòng trang đầu, 42 dòng trang sau (hết ở y=280, chân trang y=290); K = 1 + ⌈(n−36)/42⌉ (300 tuyến → 8 trang). Tiêu đề "Độ rọi ngang" sang trang cùng ảnh (bookmark trỏ đúng).
+- Kế hoạch: (1) chốt mẫu mục lục (2–3 phương án render) → (2) test: số trang mục lục khớp, link/outline có trong PDF, dung lượng ≤ 100 MB/300 tuyến, hàm tên → (3) code → (4) review → (5) E2E 786 tuyến + PWA.

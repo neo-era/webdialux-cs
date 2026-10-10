@@ -5,6 +5,11 @@
 <meta name="theme-color" content="#2563a8">
 <link rel="icon" href="icons/icon-192.png" type="image/png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="WebDialux">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<script>window.addEventListener("beforeinstallprompt", function (e) { e.preventDefault(); window.__installEvt = e; });</script>
 <style>
 /* Layout: thanh công cụ trên cùng cố định, dải KPI, bảng kết quả cuộn dọc. Công cụ kỹ thuật, quét & thao tác. */
 :root{
@@ -46,6 +51,8 @@ label.opt{display:inline-flex;gap:6px;align-items:center;font-size:13px;color:va
 .menu-item{padding:10px 14px;text-align:left;border:none;background:none;color:var(--fg);font:inherit;font-size:13.5px;cursor:pointer;text-decoration:none;display:block;border-bottom:1px solid var(--line)}
 .menu-item:last-child{border-bottom:none}
 .menu-item:hover{background:var(--surface-2)}
+.menu-hint{cursor:default;font-size:12.5px;color:var(--muted);line-height:1.4}
+.menu-hint:hover{background:none}
 .menu-sep{padding:7px 14px;font-size:11px;color:var(--muted);background:var(--surface-2);text-transform:uppercase;letter-spacing:.4px}
 input[type=number]{width:62px;font-family:var(--mono);background:var(--surface);color:var(--fg);
   border:1px solid var(--line);border-radius:6px;padding:6px 7px}
@@ -124,6 +131,8 @@ a{color:var(--accent)}
           <div class="menu-sep" id="verMenu">WebDialux-CS v1.2</div>
           <button class="menu-item" id="mHelp" role="menuitem">📖 Hướng dẫn sử dụng</button>
           <button class="menu-item" id="mTemplate" role="menuitem">⬇ Tải Excel mẫu</button>
+          <button class="menu-item" id="mInstall" role="menuitem" hidden>📲 Cài đặt ứng dụng</button>
+          <div class="menu-item menu-hint" id="mIosHint" hidden>📲 Cài trên iPhone/iPad: mở bằng <b>Safari</b>, bấm <b>Chia sẻ</b> ⬆ → <b>Thêm vào MH chính</b></div>
         </div>
       </div>
     </div>
@@ -212,13 +221,15 @@ a{color:var(--accent)}
     <ul>
       <li><b>Tên file</b>: <code>WebDialux_BaoCao_&lt;tên tuyến&gt;_&lt;YYYYMMDD-HHMM&gt;.pdf</code> (1 tuyến) hoặc <code>WebDialux_BaoCao_&lt;N&gt;_tuyen_…pdf</code> (nhiều tuyến). Chỉ xuất các tuyến đang hiển thị theo bộ lọc.</li>
       <li>Nhiều tuyến được <b>tự chia thành nhiều file, tối đa 300 tuyến/file</b> (mỗi file ≈ 40–65 MB), tên có <code>_phan1_3</code>, <code>_phan2_3</code>… Nếu trình duyệt hỏi "tải nhiều tệp", chọn <b>Cho phép</b>.</li>
+      <li><b>Mục lục &amp; tổng quan</b> ở đầu mỗi file (từ 2 tuyến): số tuyến, ĐẠT / KHÔNG ĐẠT, số trang · loại đèn, rồi bảng STT · tuyến · cấp · bộ đèn · CS · kết quả · trang. <b>Bấm vào dòng để tới trang</b>; thanh <i>bookmark</i> của trình xem PDF có từng tuyến và từng phần (bộ đèn, lắp đặt, đánh giá, độ rọi, độ chói…).</li>
+      <li><b>Tên bộ đèn</b> = tên file IES do nhà cung cấp đặt (bỏ đuôi <code>.ies</code>, <code>_IESNA2002</code>) — giống file Excel; tên chung trong IES (vd "STREET LIGHT 70W") ghi ở dòng <i>Mô tả trong IES</i>.</li>
       <li>Mỗi tuyến 3–4 trang theo bố cục DIALux: phối cảnh 3D ban đêm từ lưới E thực tính (màu theo CCT), mặt bằng bố trí; thông số bộ đèn đầy đủ + biểu đồ phân bố cường độ (Polar LDC); thông số lắp đặt + Imax 70/80/90°; bảng đánh giá Ký hiệu / Tính toán / Yêu cầu / Kiểm tra; chỉ số năng lượng (W/km, Dp, De, kWh/năm); bản đồ false-color độ rọi; lưới giá trị E; kết quả &amp; lưới độ chói theo từng observer.</li>
       <li>Chân trang ghi phiên bản app và số trang. Không dùng logo/thương hiệu DIALux — chỉ tham chiếu bố cục.</li>
     </ul>
 
     <h3>6. Cài như ứng dụng &amp; chạy offline</h3>
     <ul>
-      <li>Chrome/Edge: bấm biểu tượng <b>Cài đặt</b> (⊕) trên thanh địa chỉ hoặc menu ⋮ → <i>Cài đặt WebDialux-CS</i>. Android: menu ⋮ → <i>Thêm vào màn hình chính</i>. iPhone/iPad (Safari): Chia sẻ → <i>Thêm vào MH chính</i>.</li>
+      <li>☰ Menu → <b>📲 Cài đặt ứng dụng</b> (hiện khi trình duyệt cho phép), hoặc Chrome/Edge: biểu tượng <b>Cài đặt</b> (⊕) trên thanh địa chỉ. Android: menu ⋮ → <i>Thêm vào màn hình chính</i>. iPhone/iPad (Safari): Chia sẻ → <i>Thêm vào MH chính</i>.</li>
       <li>Sau lần mở đầu có mạng, app <b>chạy được khi không có mạng</b>: nạp Excel/IES, tính, xuất Excel và PDF.</li>
       <li>Khi có bản mới, góc dưới hiện thanh <b>"Có bản mới — Tải lại"</b>; bấm để dùng bản mới (kết quả đang xem trên màn hình sẽ mất, file đã tải về vẫn còn).</li>
     </ul>
@@ -249,7 +260,7 @@ a{color:var(--accent)}
 <script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js"></script>
 <script type="module">
 import { buildIesIndex, runBatch, runBatchRanked } from "./src/batch.mjs";
-import { COLS, rowToGeometry, matchIES } from "./src/mapping.mjs";
+import { COLS, rowToGeometry, matchIES, luminaireLabel } from "./src/mapping.mjs";
 import { calcRoad } from "./src/engine.mjs";
 import { makeIntensity } from "./src/ies.mjs";
 import { VERSION } from "./src/version.mjs";
@@ -556,7 +567,7 @@ $("btnPdf").onclick = async () => {
   $("btnPdf").disabled=true;
   try{
     const [rep, fontMod] = await Promise.all([ import("./src/report.mjs"), import("./src/font.mjs") ]);
-    const { makeDoc, renderRoadPage, finalizeDoc } = rep; const font = fontMod.default;
+    const { makeDoc, renderRoadPage, finalizeDoc, addToc } = rep; const font = fontMod.default;
     const jsPDF = window.jspdf && window.jspdf.jsPDF;
     if(!jsPDF){ setStatus("Chưa tải được thư viện jsPDF (kiểm tra mạng/CDN).",true); return; }
     const MF=parseFloat($("mf").value)||0.8;
@@ -581,14 +592,18 @@ $("btnPdf").onclick = async () => {
       makeDoc: ()=>makeDoc({jsPDF,font}),
       render: (doc,{row,g,res,e,input,result})=>{
         const autoSel = (res&&res.autoSelect) || (isRanked() && !g.meta.model);
-        renderRoadPage(doc,{input,result,ph:e.ph,makeIntensity,
+        const r = renderRoadPage(doc,{input,result,ph:e.ph,makeIntensity,
           meta:{tuyen:g.meta.tuyen,model:g.meta.model||e.model||"",fitting:g.meta.fitting,
                 power:g.meta.power??e.power,ncc:g.meta.ncc||e.manufac,iesName:e.name,
                 cct:(row["CCT (K)"]??row["CCT"]??"")||null, cri:(row["CRI"]??"")||null,
                 autoClass:res&&res.autoClass,autoSelect:autoSel,
                 classSource:res&&res.classSource}});
+        // dòng mục lục của tuyến (tên bộ đèn = tên file IES, như Excel)
+        return { stt: g.meta.stt ?? row[COLS.stt] ?? "", tuyen: g.meta.tuyen, roadClass: result.roadClass || input.roadClass,
+          lamp: luminaireLabel(e.name), power: g.meta.power ?? e.power ?? null, pass: result.pass, ...r };
       },
-      finalize: finalizeDoc, // chân trang © + Trang i/N cho mọi trang của từng file
+      // mục lục + bookmark (mỗi file riêng), rồi chân trang © + Trang i/N tính cả trang mục lục
+      finalize: (doc, info) => { addToc(doc, info.entries, info); finalizeDoc(doc); },
       emit: async (doc,{part,nParts,total,routes,first})=>{
         setStatus(`Đang lưu PDF phần ${part}/${nParts}…`);
         const subject = partSubject({part,nParts,routes,total,firstName:first.row[COLS.tuyen]});
@@ -648,6 +663,26 @@ document.addEventListener("click", (e) => { if (!e.target.closest(".menu-wrap"))
 $("guideClose").onclick = () => { $("guide").hidden = true; };
 $("guide").addEventListener("click", (e) => { if (e.target.id === "guide") $("guide").hidden = true; });
 document.addEventListener("keydown", (e) => { if (e.key === "Escape") { $("guide").hidden = true; $("menu").hidden = true; } });
+
+// ---- PWA: nút "Cài đặt ứng dụng" (Chrome/Edge/Android) + hướng dẫn iOS ----
+const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent) || (/Macintosh/.test(navigator.userAgent) && navigator.maxTouchPoints > 1);
+// iOS không có prompt cài → chỉ hiện hướng dẫn; đã chạy dạng app thì ẩn cả hai
+const standalone = matchMedia("(display-mode: standalone)").matches || navigator.standalone === true;
+const canPrompt = !standalone && !isIOS;
+// sự kiện có thể đến trước khi module chạy → <head> đã giữ sẵn ở window.__installEvt
+let installEvt = window.__installEvt || null;
+if (installEvt) $("mInstall").hidden = !canPrompt;
+window.addEventListener("beforeinstallprompt", (e) => { e.preventDefault(); installEvt = e; $("mInstall").hidden = !canPrompt; });
+window.addEventListener("appinstalled", () => { installEvt = null; $("mInstall").hidden = true; setStatus("Đã cài WebDialux-CS như ứng dụng — mở từ màn hình chính/Start menu."); });
+$("mInstall").onclick = async () => {
+  $("menu").hidden = true;
+  if (!installEvt) return;
+  installEvt.prompt();
+  const { outcome } = await installEvt.userChoice.catch(() => ({}));
+  if (outcome === "accepted") $("mInstall").hidden = true;
+  installEvt = null;
+};
+if (isIOS && !standalone) $("mIosHint").hidden = false;
 
 // ---- PWA: cài như ứng dụng + chạy offline (sw.js) ----
 if ("serviceWorker" in navigator && location.protocol !== "file:") {

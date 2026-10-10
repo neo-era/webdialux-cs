@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { createRequire } from "node:module";
 import { HyperFormula } from "hyperformula";
-import { COLS } from "../src/mapping.mjs";
+import { COLS, luminaireLabel } from "../src/mapping.mjs";
 import { buildIesIndex, runBatchRanked, runBatch } from "../src/batch.mjs";
 import { buildResultWorkbook, summarizeLuminaires, toRankedShape } from "../src/xlsxpro.mjs";
 import { scoreOptions } from "../src/scoring.mjs";
@@ -102,7 +102,7 @@ test("tiêu chí 1 — sheet 3: bộ đèn chọn + chỉ tiêu + Kết quả th
   for (let i = 0; i < results.length; i++) {
     const r = results[i], o = r.chosen, row = 5 + i;
     if (r.status !== "ok") { assert.equal(val(hf, S3, row, 19), r.status); continue; }
-    assert.equal(val(hf, S3, row, 9) || "", o ? (o.model || "") : "", `tuyến ${i + 1} bộ đèn`);
+    assert.equal(val(hf, S3, row, 9) || "", o ? luminaireLabel(o.iesName) : "", `tuyến ${i + 1} bộ đèn = tên file IES như PDF`);
     assert.equal(val(hf, S3, row, 19), o ? "ĐẠT" : "KHÔNG ĐẠT");
     if (o) { near(val(hf, S3, row, 11), o.power, "CS"); near(val(hf, S3, row, 13), o.Ltb, "Ltb"); near(val(hf, S3, row, 16), o.TI, "TI"); }
   }
@@ -139,7 +139,7 @@ test("tiêu chí 4: sửa Ltb của đèn đang ✓ xuống dưới YC → KHÔN
     exp.forEach((v, j) => assert.equal(val(hf2, S1, x.row, 30 + j) ?? "", v, `dòng ${x.row} cột ${30 + j}`));
   });
   const nc = re.find((o) => o.chosen);
-  assert.equal(val(hf2, S3, 5 + ti, 9), nc.model, "sheet 3 đổi sang đèn mới");
+  assert.equal(val(hf2, S3, 5 + ti, 9), luminaireLabel(nc.iesName), "sheet 3 đổi sang đèn mới");
   near(val(hf2, S3, 5 + ti, 13), nc.Ltb, "sheet 3 Ltb mới");
 });
 
@@ -188,7 +188,7 @@ test("đồng hạng tuyệt đối (cùng IES nạp 2 tên, cùng CS): chỉ 1 
     checked++;
   }
   assert.ok(checked > 40);
-  res.forEach((r, i) => { if (r.status === "ok" && r.chosen) assert.equal(val(hfD, S3, 5 + i, 9), r.chosen.model); });
+  res.forEach((r, i) => { if (r.status === "ok" && r.chosen) assert.equal(val(hfD, S3, 5 + i, 9), luminaireLabel(r.chosen.iesName)); });
 });
 
 test("sheet 2 so khớp đúng ký tự (không coi * ? ~ là ký tự đại diện); CS trống ở sheet 3 không thành 0", async () => {

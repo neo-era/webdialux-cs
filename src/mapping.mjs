@@ -115,6 +115,10 @@ export function modelKeyword(s) {
   return null;
 }
 /** Lấy công suất (W) từ tên file hoặc ph.inputWatts (làm tròn). */
+/** Tên bộ đèn hiển thị (PDF + Excel) = tên file IES do nhà cung cấp đặt, bỏ ".ies" và "_IESNA2002". */
+export function luminaireLabel(name) {
+  return String(name || "").trim().replace(/\.ies$/i, "").replace(/_IESNA2002$/i, "");
+}
 export function powerFromName(name) {
   const m = String(name).match(/(\d{2,3})\s*W/i);
   return m ? parseInt(m[1], 10) : null;
