@@ -171,3 +171,16 @@ test("runBatch geometry-only: không có model -> tự chọn đèn, autoSelect=
   assert.ok(res[0].power != null, "có công suất");
   assert.ok(res[0].Ltb > 0);
 });
+
+test("runChunked: chạy theo lô (nhả UI) cho kết quả giống hệt chạy 1 lượt; báo tiến độ n/tổng", async () => {
+  const { runChunked } = await import("../src/batch.mjs");
+  const idx = buildIesIndex(iesFiles);
+  const rows = Array.from({ length: 23 }, (_, i) => ({ [COLS.stt]: i + 1, [COLS.tuyen]: `T${i + 1}`, [COLS.H]: 7 + (i % 4), [COLS.vuon]: 1.5, [COLS.setback]: 0.5, [COLS.width]: 6 + (i % 5), [COLS.spacing]: 28 + (i % 9), [COLS.tilt]: 10, [COLS.arrangement]: "1 bên", [COLS.lanes]: 2, [COLS.roadClass]: "D1" }));
+  for (const fn of [runBatch, runBatchRanked]) {
+    const prog = [];
+    const got = await runChunked(fn, rows, idx, { MF: 0.8, q0: 0.08 }, { chunk: 5, onProgress: (n, t) => prog.push([n, t]) });
+    assert.deepEqual(JSON.parse(JSON.stringify(got)), JSON.parse(JSON.stringify(fn(rows, idx, { MF: 0.8, q0: 0.08 }))));
+    assert.deepEqual(prog, [[5, 23], [10, 23], [15, 23], [20, 23], [23, 23]]);
+  }
+  assert.deepEqual(await runChunked(runBatch, [], idx, {}, {}), []);
+});

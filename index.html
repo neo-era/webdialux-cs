@@ -44,6 +44,10 @@ button,.btn{font-family:var(--sans);font-size:13.5px;border:1px solid var(--line
 button:hover{border-color:var(--accent)}
 button.primary{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
 button:disabled{opacity:.5;cursor:not-allowed}
+button.busy,button.busy:disabled{opacity:1;cursor:progress}
+.spin{display:inline-block;width:.9em;height:.9em;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;vertical-align:-.12em;animation:spin .7s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion:reduce){.spin{animation-duration:2.4s}}
 label.opt{display:inline-flex;gap:6px;align-items:center;font-size:13px;color:var(--muted)}
 [hidden]{display:none!important}
 .menu-wrap{position:relative;display:inline-block}
@@ -259,7 +263,7 @@ a{color:var(--accent)}
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js"></script>
 <script type="module">
-import { buildIesIndex, runBatch, runBatchRanked } from "./src/batch.mjs";
+import { buildIesIndex, runBatch, runBatchRanked, runChunked } from "./src/batch.mjs";
 import { COLS, rowToGeometry, matchIES, luminaireLabel } from "./src/mapping.mjs";
 import { calcRoad } from "./src/engine.mjs";
 import { makeIntensity } from "./src/ies.mjs";
@@ -331,15 +335,38 @@ function finishIes(){
 function maybeEnableRun(){ $("btnRun").disabled = !(rows && iesIndex.length); }
 
 // ---- Chạy ----
-$("btnRun").onclick = () => {
+// Trạng thái "đang chạy": nút Chạy hiện vòng xoay + tiến độ, khoá các nút khác để không bấm chồng
+const RUN_LOCK = ["btnRun","btnXlsx","btnIes","btnSave","btnPdf","mode","mf","q0"];
+function setRunning(on, txt){
+  const b=$("btnRun");
+  if(on){
+    RUN_LOCK.forEach(id=>{ const el=$(id); if(el){ el.dataset.wasDisabled=el.disabled?"1":""; el.disabled=true; } });
+    b.classList.add("busy"); b.setAttribute("aria-busy","true");
+    b.innerHTML=`<span class="spin" aria-hidden="true"></span> ${txt||"Đang chạy…"}`;
+  } else {
+    RUN_LOCK.forEach(id=>{ const el=$(id); if(el){ el.disabled=el.dataset.wasDisabled==="1"; delete el.dataset.wasDisabled; } });
+    b.classList.remove("busy"); b.removeAttribute("aria-busy"); b.textContent="▶ Chạy";
+  }
+}
+$("btnRun").onclick = async () => {
+  if($("btnRun").classList.contains("busy")) return;
   const MF=parseFloat($("mf").value)||0.8;
   const q0=parseFloat($("q0").value)||0.08;
   resultMode=$("mode").value;
+  const fn = resultMode==="rank" ? runBatchRanked : runBatch;
   const t0=performance.now();
+  setRunning(true, `Đang chạy… 0/${rows.length}`);
+  setStatus(`Đang tính ${rows.length} tuyến…`);
+  let ok=false;
   try{
-    if(resultMode==="rank"){ results=runBatchRanked(rows,iesIndex,{MF,q0}); }
-    else { results=runBatch(rows,iesIndex,{MF,q0}); }
-  }catch(e){ setStatus("Lỗi khi chạy: "+e.message,true); return; }
+    results = await runChunked(fn, rows, iesIndex, {MF,q0}, { chunk: 25, onProgress: (n,t)=>{
+      $("btnRun").lastChild.textContent=` Đang chạy… ${n}/${t}`;
+      setStatus(`Đang tính ${n}/${t} tuyến…`);
+    }});
+    ok=true;
+  }catch(e){ setStatus("Lỗi khi chạy: "+e.message,true); }
+  finally{ setRunning(false); }
+  if(!ok) return;
   const ms=Math.round(performance.now()-t0);
   render();
   const extra = resultMode==="rank" ? ` · ${results.reduce((n,r)=>n+(r.options?r.options.length:0),0)} lượt tính đèn` : "";

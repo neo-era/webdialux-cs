@@ -172,3 +172,18 @@ export function autoFind(rows, iesIndex, opts = {}) {
     };
   });
 }
+
+/**
+ * Chạy runBatch/runBatchRanked theo lô `chunk` dòng, nhả luồng giữa các lô để trình duyệt vẽ
+ * trạng thái "Đang chạy n/m" (chạy 1 lượt thì giao diện đứng hình tới khi xong).
+ * Mỗi dòng tính độc lập nên ghép các lô cho kết quả y hệt chạy 1 lượt.
+ */
+export async function runChunked(fn, rows, iesIndex, opts = {}, { chunk = 25, onProgress } = {}) {
+  const out = [];
+  for (let i = 0; i < rows.length; i += chunk) {
+    out.push(...fn(rows.slice(i, i + chunk), iesIndex, opts));
+    if (onProgress) await onProgress(out.length, rows.length);
+    await new Promise((r) => setTimeout(r, 0));
+  }
+  return out;
+}
