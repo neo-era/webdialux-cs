@@ -3,6 +3,7 @@
 import { bridgeGeometry, makeProfile, polePositions } from "./bridge.mjs";
 import { heatColor } from "./areaDraw.mjs";
 import { makeProjector } from "./areaView3D.mjs";
+import { drawLuminaire3D } from "./lampGlyph.mjs";
 
 const vn = (x, d = 1) => (x == null || !isFinite(x) ? "—" : Number(x).toFixed(d).replace(".", ","));
 const NIGHT = { sky0: "#0b1726", sky1: "#132a42", water: "#0d2438", deck: "#5c6573", girder: "#3f4753", walk: "#9aa3af", guard: "#c9d0d9",
@@ -228,28 +229,24 @@ export function drawBridge3D(ctx, Wpx, Hpx, b, result, opts = {}) {
   for (let l = 1; l < G.lanes; l++) { const y = l * G.W / G.lanes; ctx.setLineDash([6 * k, 9 * k]); ctx.beginPath(); let st = false;
     for (let i = 0; i <= 80; i++) { const x = G.L * i / 80, q = Pz(x, y, P.z(x) + 0.02); if (!q) { st = false; continue; } st ? ctx.lineTo(q[0], q[1]) : ctx.moveTo(q[0], q[1]); st = true; } ctx.stroke(); }
   ctx.setLineDash([]);
-  // trụ đèn + quầng sáng (vẽ sau cùng, xa trước)
+  // trụ đèn + bộ đèn (vẽ sau cùng, xa trước) — đèn LED cắt sáng hoàn toàn: ánh sáng chỉ toả xuống, không quầng hắt lên trời
   const yPole = { near: -G.setback, far: G.W + G.setback, mid: G.W / 2 };
   const items = [];
   for (const p of polePositions(b)) {
     const y = yPole[p.side], z = P.z(p.x), dir = p.side === "near" ? 1 : p.side === "far" ? -1 : 0;
     const base = Pz(p.x, y, z), top = Pz(p.x, y, z + G.H);
     if (!base || !top) continue;
-    const lamps = dir ? [[y + dir * G.arm]] : [[y - G.arm], [y + G.arm]];
-    items.push({ d: base[2], base, top, lamps: lamps.map(([ly]) => Pz(p.x, ly, z + G.H)).filter(Boolean) });
+    const lamps = dir ? [[y + dir * G.arm, dir > 0 ? 90 : -90]] : [[y - G.arm, -90], [y + G.arm, 90]];
+    items.push({ d: base[2], base, top, x: p.x, z, lamps: lamps.map(([ly, aim]) => ({ y: ly, aim, s: Pz(p.x, ly, z + G.H) })).filter((l) => l.s) });
   }
   items.sort((a, c) => c.d - a.d);
+  const camZ = pr.C[2] + tz, Pw = (x, y, z) => Pz(x, y, z);
   for (const it of items) {
-    const w = Math.max(1, 0.25 * pr.f / it.d);
-    ctx.strokeStyle = "#aab3bf"; ctx.lineWidth = w; ctx.beginPath(); ctx.moveTo(it.base[0], it.base[1]); ctx.lineTo(it.top[0], it.top[1]);
-    for (const l of it.lamps) ctx.lineTo(l[0], l[1]);
-    ctx.stroke();
-    for (const l of it.lamps) {
-      const r = Math.max(4 * k, 1100 * k / it.d);
-      const gr = ctx.createRadialGradient(l[0], l[1], 0, l[0], l[1], r);
-      gr.addColorStop(0, "rgba(255,248,225,0.95)"); gr.addColorStop(0.25, "rgba(255,214,130,0.45)"); gr.addColorStop(1, "rgba(255,200,110,0)");
-      ctx.fillStyle = gr; ctx.beginPath(); ctx.arc(l[0], l[1], r, 0, 2 * Math.PI); ctx.fill();
-    }
+    const w = Math.max(1, 0.2 * pr.f / it.d);
+    ctx.strokeStyle = "#8d96a3"; ctx.lineWidth = w; ctx.lineCap = "round"; ctx.beginPath(); ctx.moveTo(it.base[0], it.base[1]); ctx.lineTo(it.top[0], it.top[1]);
+    for (const l of it.lamps) ctx.lineTo(l.s[0], l.s[1]);
+    ctx.stroke(); ctx.lineCap = "butt";
+    for (const l of it.lamps) drawLuminaire3D(ctx, Pw, { x: it.x, y: l.y, z: it.z + G.H, aim: l.aim, tilt: G.tilt }, { k, f: pr.f, style: opts.lampStyle || "beam", reach: G.H, camZ });
   }
   return { cam, hi };
 }
