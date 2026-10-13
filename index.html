@@ -101,6 +101,11 @@ a{color:var(--accent)}
 .guide table{width:100%;border-collapse:collapse;font-size:12.5px;margin:6px 0}
 .guide th,.guide td{border:1px solid var(--line);padding:5px 8px;text-align:left}
 .guide th{background:var(--surface-2);color:var(--muted);text-transform:none;letter-spacing:normal;position:static;font-size:12.5px}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:8px;overflow:hidden;margin-top:4px;width:max-content}
+.seg button{border:none;border-radius:0;background:var(--surface);color:var(--muted);padding:5px 12px;font-size:12.5px}
+.seg button.on{background:var(--accent);color:var(--accent-ink);font-weight:600}
+body.area .road-only{display:none!important}
+body:not(.area) .area-only{display:none!important}
 </style>
 
 <div class="upd" id="updBar" hidden role="status">Có bản mới của WebDialux-CS. <button class="primary" id="updBtn">Tải lại</button></div>
@@ -108,13 +113,14 @@ a{color:var(--accent)}
   <header class="bar">
     <div class="brand">
       <b>WebDialux-CS <span class="ver" id="verBadge">v1.2</span></b>
-      <span>Mô phỏng chiếu sáng đường theo QCVN 07-7:2023 · bảng R3 CIE</span>
+      <span id="brandSub">Mô phỏng chiếu sáng đường theo QCVN 07-7:2023 · bảng R3 CIE</span>
+      <div class="seg" role="tablist" aria-label="Chế độ tính"><button id="segRoad" class="on" role="tab" aria-selected="true">Đường</button><button id="segArea" role="tab" aria-selected="false">Khu vực tự do</button></div>
     </div>
     <div class="controls">
       <button id="btnXlsx">📄 Chọn file Excel</button>
       <button id="btnIes">📁 Chọn thư mục IES</button>
       <label class="opt">MF <input type="number" id="mf" value="0.8" step="0.05" min="0.3" max="1"></label>
-      <label class="opt">Mặt đường (q0)
+      <label class="opt road-only">Mặt đường (q0)
         <select id="q0" title="Hệ số độ chói trung bình q0 của mặt đường (CIE R3). 0,08 = Tarmac theo DIALux.">
           <option value="0.10">R3 · q0 0,10 (rất sáng)</option>
           <option value="0.09">R3 · q0 0,09</option>
@@ -123,10 +129,10 @@ a{color:var(--accent)}
           <option value="0.06">R3 · q0 0,06</option>
           <option value="0.05">R3 · q0 0,05 (tối)</option>
         </select></label>
-      <label class="opt">Chế độ
+      <label class="opt road-only">Chế độ
         <select id="mode"><option value="rank">Đa phương án (chấm điểm &amp; chọn tối ưu)</option><option value="each">Từng phương án (1 đèn/dòng)</option></select>
       </label>
-      <button id="btnRun" class="primary" disabled>▶ Chạy</button>
+      <button id="btnRun" class="primary road-only" disabled>▶ Chạy</button>
       <button id="btnSave" disabled title="Tải xuống file kết quả mới (.xlsx) — không ghi lên file Excel gốc">⬇️ Tải file kết quả</button>
       <button id="btnPdf" disabled>📑 Xuất PDF</button>
       <div class="menu-wrap">
@@ -134,7 +140,8 @@ a{color:var(--accent)}
         <div class="menu" id="menu" hidden role="menu">
           <div class="menu-sep" id="verMenu">WebDialux-CS v1.2</div>
           <button class="menu-item" id="mHelp" role="menuitem">📖 Hướng dẫn sử dụng</button>
-          <button class="menu-item" id="mTemplate" role="menuitem">⬇ Tải Excel mẫu</button>
+          <button class="menu-item" id="mTemplate" role="menuitem">⬇ Tải Excel mẫu (đường)</button>
+          <button class="menu-item" id="mTemplateArea" role="menuitem">⬇ Tải Excel mẫu khu vực</button>
           <button class="menu-item" id="mInstall" role="menuitem" hidden>📲 Cài đặt ứng dụng</button>
           <div class="menu-item menu-hint" id="mIosHint" hidden>📲 Cài trên iPhone/iPad: mở bằng <b>Safari</b>, bấm <b>Chia sẻ</b> ⬆ → <b>Thêm vào MH chính</b></div>
         </div>
@@ -143,8 +150,9 @@ a{color:var(--accent)}
   </header>
 
   <div class="status" id="status">Chọn file Excel dữ liệu tuyến và thư mục chứa file .ies để bắt đầu. Mọi tính toán chạy local trên máy — dữ liệu Excel/IES không gửi lên mạng.</div>
+  <section id="areaView" class="area-only" aria-label="Chế độ khu vực tự do"></section>
 
-  <div class="kpis" id="kpis" hidden>
+  <div class="road-only kpis" id="kpis" hidden>
     <div class="kpi"><div class="n" id="kTong">0</div><div class="l">Dòng</div></div>
     <div class="kpi"><div class="n" id="kTinh">0</div><div class="l">Tính được</div></div>
     <div class="kpi ok"><div class="n" id="kDat">0</div><div class="l">Đạt</div></div>
@@ -152,12 +160,12 @@ a{color:var(--accent)}
     <div class="kpi warn"><div class="n" id="kThieu">0</div><div class="l">Thiếu IES/HH</div></div>
   </div>
 
-  <div class="filters" id="filters" hidden>
+  <div class="road-only filters" id="filters" hidden>
     <select id="flt"><option value="all">Tất cả</option><option value="dat">Đạt</option><option value="fail">Không đạt</option><option value="thieu">Thiếu IES/hình học</option></select>
     <input type="search" id="q" placeholder="Tìm tuyến…" style="flex:1;min-width:140px;padding:7px 10px;border:1px solid var(--line);border-radius:6px;background:var(--surface);color:var(--fg)">
   </div>
 
-  <div class="tablewrap" id="tablewrap" hidden>
+  <div class="road-only tablewrap" id="tablewrap" hidden>
     <table id="tbl">
       <thead><tr>
         <th class="t">STT</th><th class="t">Tuyến</th><th>Cấp</th><th class="t">Đèn</th><th class="t">Hãng</th><th>CS</th>
@@ -166,9 +174,9 @@ a{color:var(--accent)}
       <tbody id="tbody"></tbody>
     </table>
   </div>
-  <div class="legend" id="legend" hidden>Dấu <span class="auto">•</span> = giá trị do app tự xác định (cấp đường từ hình học) hoặc tự chọn (bộ đèn công suất nhỏ nhất vẫn Đạt). Bấm <b>⬇️ Tải file kết quả</b> để tải file Excel kết quả mới (file gốc không bị thay đổi).</div>
+  <div class="road-only legend" id="legend" hidden>Dấu <span class="auto">•</span> = giá trị do app tự xác định (cấp đường từ hình học) hoặc tự chọn (bộ đèn công suất nhỏ nhất vẫn Đạt). Bấm <b>⬇️ Tải file kết quả</b> để tải file Excel kết quả mới (file gốc không bị thay đổi).</div>
 
-  <div class="empty" id="empty">Chưa có dữ liệu.</div>
+  <div class="road-only empty" id="empty">Chưa có dữ liệu.</div>
   <div class="note" id="note"></div>
   <div class="owner">© 2026 maivulam · WebDialux-CS</div>
 </div>
@@ -242,6 +250,16 @@ a{color:var(--accent)}
       <li>Khi có bản mới, góc dưới hiện thanh <b>"Có bản mới — Tải lại"</b>; bấm để dùng bản mới (kết quả đang xem trên màn hình sẽ mất, file đã tải về vẫn còn).</li>
     </ul>
 
+    <h3>6b. Chế độ "Khu vực tự do" — sân thể thao, công viên, quảng trường, bãi đỗ xe</h3>
+    <ul>
+      <li>Bấm nút <b>Khu vực tự do</b> dưới tên app (hoặc mở file Excel có sheet <code>VI TRI TRU</code> — app tự chuyển chế độ). ☰ Menu → <b>Tải Excel mẫu khu vực</b> để có sẵn cấu trúc.</li>
+      <li><b>Toạ độ</b> tính bằng mét, x sang phải, y lên trên. <b>Hướng chiếu</b> đo từ trục +x ngược chiều kim đồng hồ (0° = +x, 90° = +y). <b>Góc nghiêng</b>: 0° = chiếu thẳng xuống, tăng để hắt chùm sáng ra xa theo hướng chiếu.</li>
+      <li><b>Sheet VI TRI TRU</b>: Trụ · x · y · Cao H · Hướng chiếu · Góc nghiêng · Số đèn · Bộ đèn (tên file IES). <b>Sheet VUNG TINH</b>: Vùng · Mã yêu cầu · x0 · y0 · Dài theo x · Rộng theo y (hoặc Đa giác "x y; x y; …") · Bước lưới · MF.</li>
+      <li>Trên màn hình: sửa trực tiếp trong bảng, <b>kéo trụ</b> trên mặt bằng, kéo <b>đầu mũi tên</b> để xoay hướng chiếu — kết quả tính lại ngay. Bấm <b>⬇️ Tải file kết quả</b> để lưu vị trí đã chỉnh cùng kết quả và lưới độ rọi; <b>📑 Xuất PDF</b> để ra báo cáo.</li>
+      <li><b>Yêu cầu</b> chọn theo <b>TCVN 13608:2023</b> (Bảng 4 đường đi bộ, Bảng 6 bãi đỗ xe, Bảng 7 công viên/vườn hoa, Bảng 12–15 sân thể thao, bể bơi) hoặc <b>EN 12193</b> cấp I–III; sửa được ngưỡng Eav/Uo. Kết quả: Eav, Emin, Emax, Uo = Emin/Eav, Ud = Emin/Emax, công suất, W/m².</li>
+      <li>Chỉ tính <b>độ rọi ngang</b>; độ rọi đứng (bể bơi, truyền hình) và chói loá GR chưa tính. File IES phải là trắc quang <b>loại C</b> (đèn đường, đa số đèn pha LED).</li>
+    </ul>
+
     <h3>7. Lưu ý</h3>
     <ul>
       <li>Trong khung xem trước có thể bị chặn tải — mở app ở <code>neo-era.github.io/webdialux-cs/</code> hoặc local là tải mượt.</li>
@@ -273,6 +291,7 @@ import { calcRoad } from "./src/engine.mjs";
 import { makeIntensity } from "./src/ies.mjs";
 import { VERSION } from "./src/version.mjs";
 import { buildPdfParts, partSubject, PDF_PER_FILE } from "./src/pdfparts.mjs";
+import { initAreaUI } from "./src/areaui.mjs";
 document.getElementById("verBadge").textContent = VERSION;
 document.getElementById("verMenu").textContent = "WebDialux-CS " + VERSION;
 
@@ -282,6 +301,31 @@ let xlsxBuf = null, xlsxHandle = null, wb = null, sheetName = null, rows = null,
 let iesFiles = [], iesIndex = [], results = null, resultMode = null;
 
 function setStatus(t, bad){ const s=$("status"); s.textContent=t; s.classList.toggle("bad",!!bad); }
+
+// ---- Chế độ "Khu vực tự do" (sân thể thao, công viên…) ----
+let areaMode = false;
+const AREA = initAreaUI({
+  root: $("areaView"), setStatus, getIes: () => iesIndex,
+  getMF: () => parseFloat($("mf").value) || 0.8,
+  saveXlsxBuffer: (b, n) => saveXlsxBuffer(b, n), outName: (k, s, e) => outName(k, s, e),
+  getPdfTools: async () => { const [rep, f] = await Promise.all([import("./src/report.mjs"), import("./src/font.mjs")]);
+    const jsPDF = window.jspdf && window.jspdf.jsPDF; if (!jsPDF) throw new Error("chưa tải được jsPDF");
+    return { jsPDF, makeDoc: rep.makeDoc, finalizeDoc: rep.finalizeDoc, font: f.default }; },
+});
+function setMode(area){
+  areaMode = !!area; document.body.classList.toggle("area", areaMode);
+  $("brandSub").textContent = areaMode ? "Chiếu sáng khu vực tự do (sân thể thao, công viên, bãi đỗ xe) · TCVN 13608:2023 / EN 12193" : "Mô phỏng chiếu sáng đường theo QCVN 07-7:2023 · bảng R3 CIE";
+  $("segRoad").classList.toggle("on", !areaMode); $("segArea").classList.toggle("on", areaMode);
+  $("segRoad").setAttribute("aria-selected", String(!areaMode)); $("segArea").setAttribute("aria-selected", String(areaMode));
+  if (areaMode) { $("btnSave").disabled = false; $("btnPdf").disabled = false; AREA.render(); }
+  else { $("btnSave").disabled = !results; $("btnPdf").disabled = !results; }
+}
+// móc kiểm thử tự động (E2E): nạp IES/Excel không qua hộp thoại chọn file
+window.__webdialux = { area: AREA, setMode, loadIes: (files) => { iesFiles = files; finishIes(); },
+  loadXlsx: (buf, name) => { xlsxBuf = buf; loadWb(name); } };
+$("segRoad").onclick = () => setMode(false);
+$("segArea").onclick = () => setMode(true);
+$("mf").addEventListener("change", () => { if (areaMode) AREA.recalc(); });
 function fmt(x,d=2){ return (x==null||!isFinite(x))?"—":Number(x).toFixed(d); }
 
 // ---- Chọn Excel ----
@@ -299,8 +343,11 @@ $("btnXlsx").onclick = async () => {
 };
 function loadWb(name){
   try{
-    xlsxName = name || "";
-    wb = XLSX.read(xlsxBuf,{type:"array"});
+    const w = XLSX.read(xlsxBuf,{type:"array"});
+    // file khu vực: không đụng dữ liệu tuyến đường (wb, rows, results) đang có
+    if (w.SheetNames.includes("VI TRI TRU")) { setMode(true); AREA.loadWorkbook(w, (name||"").replace(/\.(xlsx|xlsm)$/i,"")); return; }
+    if (areaMode) setMode(false);
+    xlsxName = name || ""; wb = w;
     sheetName = wb.SheetNames.includes("DU LIEU TUYEN") ? "DU LIEU TUYEN" : wb.SheetNames[0];
     rows = XLSX.utils.sheet_to_json(wb.Sheets[sheetName],{defval:null});
     setStatus(`Excel: ${name} · sheet "${sheetName}" · ${rows.length} dòng. ${iesIndex.length?"Sẵn sàng chạy.":"Giờ chọn thư mục IES."}`);
@@ -335,6 +382,7 @@ function finishIes(){
   const models=[...new Set(iesIndex.map(e=>e.model).filter(Boolean))];
   setStatus(`IES: ${iesFiles.length} file (${iesIndex.length} hợp lệ) · model: ${models.join(", ")||"?"}. ${rows?"Sẵn sàng chạy.":"Giờ chọn file Excel."}`);
   maybeEnableRun();
+  AREA.onIes();
 }
 function maybeEnableRun(){ $("btnRun").disabled = !(rows && iesIndex.length); }
 
@@ -551,6 +599,7 @@ async function saveRanked(){
 }
 
 $("btnSave").onclick = async () => {
+  if(areaMode){ try{ await AREA.saveExcel(); }catch(e){ setStatus("Lỗi xuất Excel khu vực: "+e.message,true); } return; }
   if(!results){ return; }
   if(isRanked()){ await saveRanked(); return; }
   // Chế độ TỪNG PHƯƠNG ÁN: cũng xuất workbook 3 sheet (ExcelJS) như chế độ chấm điểm — luôn là FILE MỚI, không ghi lên file gốc
@@ -591,6 +640,7 @@ $("btnSave").onclick = async () => {
 
 // ---- Xuất PDF kiểu DIALux (các tuyến đang lọc, mỗi tuyến vài trang; chia nhiều file) ----
 $("btnPdf").onclick = async () => {
+  if(areaMode){ try{ await AREA.exportPdf(); }catch(e){ setStatus("Lỗi xuất PDF khu vực: "+e.message,true); } return; }
   if(!results) return;
   const idxs = visibleIndices().filter(i=>results[i].status==="ok");
   if(idxs.length===0){ setStatus("Không có tuyến tính được (theo bộ lọc) để xuất PDF.",true); return; }
@@ -672,6 +722,7 @@ async function saveXlsxBuffer(out, name){
   const a=Object.assign(document.createElement("a"),{href:URL.createObjectURL(blob),download:name});
   document.body.appendChild(a); a.click(); a.remove(); return true;
 }
+$("mTemplateArea").onclick = async () => { $("menu").hidden = true; try{ await AREA.downloadTemplate(); }catch(e){ setStatus("Lỗi tạo Excel mẫu khu vực: "+e.message,true); } };
 $("mTemplate").onclick = async () => {
   $("menu").hidden = true;
   try{

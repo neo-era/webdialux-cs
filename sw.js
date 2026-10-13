@@ -1,7 +1,7 @@
 // Service worker WebDialux-CS: cài như ứng dụng + chạy offline (xem DESIGN.md mục PWA).
 // VERSION phải bằng src/version.mjs (test/pwa.test.mjs kiểm) — đổi phiên bản thì byte file này đổi,
 // trình duyệt cài SW mới và trang hiện thanh "Có bản mới".
-const VERSION = "v2.3";
+const VERSION = "v2.4";
 const CACHE = "webdialux-" + VERSION;
 const PRECACHE = [
   "./",
@@ -11,6 +11,11 @@ const PRECACHE = [
   "./icons/icon-512.png",
   "./icons/icon-maskable-512.png",
   "./icons/apple-touch-icon.png",
+  "./src/area.mjs",
+  "./src/areaDraw.mjs",
+  "./src/areaReport.mjs",
+  "./src/areaReq.mjs",
+  "./src/areaui.mjs",
   "./src/batch.mjs",
   "./src/engine.mjs",
   "./src/font.mjs",

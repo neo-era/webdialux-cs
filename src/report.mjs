@@ -582,10 +582,10 @@ export function armDataURL(d, doc = globalThis.document) {
 
 // ---- Dựng PDF (trình duyệt): cần jsPDF + font Unicode + makeIntensity ----
 // Ảnh PNG luôn thêm với nén "FAST": mặc định jsPDF lưu pixel thô → PDF to gấp ~10 lần.
-const vn = (x, d = 2) => (x == null || !isFinite(x)) ? "—" : Number(x).toFixed(d).replace(".", ",");
+export const vn = (x, d = 2) => (x == null || !isFinite(x)) ? "—" : Number(x).toFixed(d).replace(".", ",");
 
 /** Cắt chữ bằng "…" cho vừa bề rộng maxW (mm) ở cỡ chữ hiện tại. */
-function fitText(doc, txt, maxW) {
+export function fitText(doc, txt, maxW) {
   let s = String(txt ?? "");
   if (doc.getTextWidth(s) <= maxW) return s;
   const ell = "…";
@@ -593,7 +593,7 @@ function fitText(doc, txt, maxW) {
   return s + ell;
 }
 
-function drawTable(doc, x, y, cols, rows, opt = {}) {
+export function drawTable(doc, x, y, cols, rows, opt = {}) {
   const rh = opt.rh || 7, fs = opt.fs || 9;
   let cy = y;
   rows.forEach((row, ri) => {
@@ -632,12 +632,12 @@ function newPage(doc, d) {
 }
 
 /** Đóng tài liệu: chân trang © + "Trang i/N" cho MỌI trang (gọi 1 lần sau khi render xong). */
-export function finalizeDoc(doc) {
+export function finalizeDoc(doc, { tail = "engine CIE 140 · bảng R3 CIE · TI theo Stiles-Holladay (xấp xỉ)" } = {}) {
   const n = doc.getNumberOfPages();
   for (let i = 1; i <= n; i++) {
     doc.setPage(i);
     doc.setFontSize(7.5); doc.setTextColor(120, 130, 145);
-    doc.text(`© 2026 maivulam · WebDialux-CS ${VERSION} · engine CIE 140 · bảng R3 CIE · TI theo Stiles-Holladay (xấp xỉ)`, 14, 290);
+    doc.text(`© 2026 maivulam · WebDialux-CS ${VERSION} · ${tail}`, 14, 290);
     doc.text(`Trang ${i}/${n}`, 196, 290, { align: "right" });
     doc.setTextColor(30, 30, 40);
   }

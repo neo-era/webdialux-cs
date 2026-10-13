@@ -12,6 +12,7 @@ Chạy ngay: **https://neo-era.github.io/webdialux-cs/** · Phiên bản: xem `s
 - **Vỉa hè & dải phân cách**: cột *Độ rộng vỉa hè (m)* giới hạn dải tính SR = min(5 m, W/2, vỉa hè) và được vẽ trong 3D/mặt bằng; cột *Độ rộng dải phân cách (m)* để vẽ dải phân cách khi *Dải phân cách giữa* = có (số liệu tính không đổi).
 - **Tư thế lắp đặt thật** (v2.3): độ rọi, độ chói, TI, Imax 70/80/90°, ULR/ULOR tính theo đèn đã nghiêng/xoay; cột *Góc xoay bộ đèn*, *Số bộ đèn/trụ*, *Hệ số bảo trì MF* theo tuyến; bố trí *giữa* (trụ trên dải phân cách, cần đôi). Cường độ lấy đúng IES, không nhân ballast factor (như DIALux). Ul theo tim làn của từng observer (EN 13201-3).
 - **Kiểm chứng DIALux**: ca Cầu Bình Triệu 2 (đúng file IES + báo cáo DIALux đầy đủ) khớp lưới E từng điểm (TB 0,0%), lưới L (TB −0,4%), Ltb 1,37/1,38, Ul 0,91/0,90, Imax 534/282/10,1 vs 538/284/10,1 — là test cố định.
+- **Chế độ Khu vực tự do** (v2.4): sân thể thao, công viên, quảng trường, bãi đỗ xe — khai báo trụ bằng Excel (`VI TRI TRU`, `VUNG TINH`) hoặc kéo/xoay trụ trên mặt bằng, tính lưới độ rọi ngang từng vùng (chữ nhật hoặc đa giác), đánh giá theo TCVN 13608:2023 (Bảng 4, 6, 7, 12–15) và EN 12193 cấp I–III; xuất Excel (trụ đã chỉnh + kết quả + lưới) và PDF.
 - **Mặt đường q0** chọn được (CIE R3, mặc định 0,08 theo DIALux; 0,07 chuẩn CIE), **MF** tuỳ chỉnh.
 - **Tải file kết quả Excel** (ExcelJS, định dạng chuyên nghiệp, 3 sheet): *Chấm điểm chi tiết* · *Tổng hợp đèn* (theo NSX · loại · công suất → số tuyến, số bộ, kW) · *Theo tuyến*. Luôn là **file mới**, không ghi lên file gốc. Kết quả/điểm/hạng/✓/tổng hợp là **công thức Excel** — sửa số trong Excel là tự tính lại.
 - **Xuất PDF** kiểu DIALux, 3–4 trang/tuyến, nhiều tuyến tự chia **tối đa 300 tuyến/file** (ảnh nén, ≈ 40–65 MB/file), mỗi file có **mục lục & tổng quan** bấm được + bookmark từng tuyến/phần; tên bộ đèn = tên file IES (giống Excel): phối cảnh 3D ban đêm từ lưới E thực tính (màu theo CCT, trụ trên vỉa hè, vỉa hè tô theo E thực tính, dải phân cách, đúng bố trí 1 bên/đối xứng/so le), mặt bằng, thông số bộ đèn + Polar LDC, lắp đặt + Imax 70/80/90°, bảng Ký hiệu/Tính toán/Yêu cầu/Kiểm tra, chỉ số năng lượng, false-color độ rọi, lưới giá trị E, kết quả & lưới độ chói theo từng observer.
@@ -39,12 +40,13 @@ Chạy local: `python -m http.server 8080` trong thư mục repo → http://loca
 | `src/mapping.mjs` | Đọc cột Excel, phân cấp đường (cột / loại tuyến / hình học) |
 | `src/batch.mjs`, `src/scoring.mjs` | Chạy hàng loạt, chấm điểm Borda, chọn đèn tối ưu |
 | `src/xlsxpro.mjs` | Workbook kết quả 3 sheet (ExcelJS); `toRankedShape` dùng chung cho 2 chế độ |
+| `src/area.mjs`, `src/areaReq.mjs`, `src/areaDraw.mjs`, `src/areaReport.mjs`, `src/areaui.mjs` | Chế độ khu vực: tính, bảng yêu cầu, vẽ mặt bằng, PDF, giao diện |
 | `src/template.mjs` | Excel mẫu nhập liệu (ExcelJS): dữ liệu tuyến, bảng cấp đường QCVN 07-7:2023, hướng dẫn |
 | `src/report.mjs`, `src/font.mjs` | Báo cáo PDF (jsPDF + canvas), font tiếng Việt nhúng |
 | `src/pdfparts.mjs` | Chia báo cáo nhiều tuyến thành nhiều file PDF |
 | `sw.js`, `manifest.webmanifest`, `icons/` | PWA: cache offline theo phiên bản, cài đặt; icon sinh bằng `tools/make-icons.mjs` |
 | `cli.mjs` | Chạy dòng lệnh một ca |
-| `test/` | Bộ test `node --test` (131 test; Excel công thức kiểm bằng HyperFormula, PDF mục lục/link/bookmark đọc lại bằng pdf.js) |
+| `test/` | Bộ test `node --test` (139 test; Excel công thức kiểm bằng HyperFormula, PDF mục lục/link/bookmark đọc lại bằng pdf.js) |
 | `data/ies/`, `data/dialux_cases.json` | IES mẫu, 14 ca đối chiếu DIALux |
 
 ## Kiểm chứng

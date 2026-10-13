@@ -83,3 +83,15 @@ Tiêu chí (chốt 13-10-2026):
 - Cột mới **"Độ rộng dải phân cách (m)"** → `input.medianW`; `input.median` (bool) từ "Dải phân cách giữa". **Chỉ dùng để vẽ** (đã chốt): engine vẫn coi W là tổng các làn. Thiếu bề rộng mà có dải → vẽ 2 m.
 - Engine `detail` trả thêm `Ewalk = {w, ys, left[ny][nLong], right[ny][nLong]}`: lưới E trên vỉa hè hai bên (bề rộng vẽ = sidewalk ?? max(3, setback+1)) để 3D tô sáng vỉa hè theo số thật.
 - 3D/mặt bằng: hàm `lateralLayout(I)` ánh xạ toạ độ ngang tính toán (0..W, vỉa hè <0 và >W) ↔ toạ độ vẽ có chèn dải phân cách ở giữa (W/2). Vỉa hè: mặt lát sáng hơn nhựa, tô theo Ewalk, có bó vỉa; dải phân cách: bó vỉa + mặt cỏ, tô theo E giữa đường; vạch làn chia hai bên, không vẽ vạch trùng dải. Trụ đứng trên vỉa hè (setback), cần vươn vào làn.
+
+## v2.4 — Chế độ "Khu vực tự do" (sân thể thao, công viên, quảng trường, bãi đỗ xe)
+Tiêu chí (chốt 13-10-2026): khai báo trụ bằng Excel + bấm/kéo trên mặt bằng (xuất ngược ra Excel); ngưỡng đánh giá chọn từ bảng chuẩn có sẵn, sửa được; giao diện phương án **B** (bảng trụ bên trái, KPI + mặt bằng bên phải).
+
+- **Dữ liệu** (`src/area.mjs`): workbook có sheet `VI TRI TRU` → app tự chuyển sang chế độ khu vực.
+  - `VI TRI TRU`: Trụ · x (m) · y (m) · Cao H (m) · Hướng chiếu (độ) · Góc nghiêng (độ) · Số đèn · Bộ đèn (tên file IES / model).
+  - `VUNG TINH`: Vùng · Yêu cầu (mã trong bảng chuẩn) · x0 · y0 · Dài theo x (m) · Rộng theo y (m) · Đa giác "x,y; x,y; …" (tuỳ chọn, ưu tiên hơn hình chữ nhật) · Bước lưới (m) · Eav yêu cầu · Uo yêu cầu · MF.
+- **Quy ước toạ độ**: mặt bằng x sang phải, y lên trên (như CAD). Hướng chiếu = phương vị đo từ trục +x, ngược chiều kim đồng hồ (0° = +x, 90° = +y). Góc nghiêng = góc giữa trục quang và phương thẳng đứng hướng xuống (0° = chiếu thẳng xuống), nghiêng về phía Hướng chiếu. Ánh xạ engine: `{x, y, H, tilt, rot: Hướng − 90, c0dir: +1}` (C0 của IES = hướng chiếu).
+- **Tính** (`calcArea`): lưới điểm tâm ô theo bước lưới trong vùng (đa giác: điểm trong đa giác), E = Σ illuminanceAtPoint (cùng hàm với chế độ đường, đã kiểm chứng DIALux). Kết quả mỗi vùng: Eav, Emin, Emax, Uo = Emin/Eav, Ud = Emin/Emax, công suất, mật độ công suất W/m²; Đạt khi Eav ≥ YC và Uo ≥ YC (bỏ qua chỉ tiêu không có YC).
+- **Bảng yêu cầu** (`src/areaReq.mjs`): TCVN 13608:2023 Bảng 4, 6, 7, 12–15 và EN 12193 cấp I–III (bóng đá, tennis, sân đa năng). Người dùng sửa được giá trị ở sheet `VUNG TINH`.
+- **IES**: hỗ trợ trắc quang loại C (đa số đèn đường/đèn pha LED). Loại A/B: cảnh báo, chưa tính (nợ kỹ thuật).
+- **Xuất**: Excel (VI TRI TRU sau khi sửa trên app, VUNG TINH, KET QUA, lưới E từng vùng) và PDF (mặt bằng false-color + trụ + hướng chiếu, bảng kết quả theo yêu cầu, bảng trụ, thông số bộ đèn).
