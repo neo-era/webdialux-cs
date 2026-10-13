@@ -39,6 +39,24 @@ export const SAMPLES = {
       { name: "Sân hoạt động", x0: 50, y0: 38, L: 24, W: 18, step: 1, req: "TCVN13608-B7-I-cv-santhoatdong" },
     ],
   },
+  mythuat: {
+    name: "Chiếu sáng mỹ thuật mẫu", label: "Mỹ thuật mẫu (tòa nhà, cây, tường rào)", select: "H1", tab: "obj",
+    // tòa nhà 24 × 12 m cao 18 m, mặt Nam sơn trắng (ρ 0,75) được đánh giá; 4 đèn âm đất cách mặt nhà 1,5 m, mỗi 6 m, hắt lên;
+    // 2 cây có đèn âm đất hắt tán; tường rào chỉ tính để xem (không đặt yêu cầu)
+    poles: [
+      ...[0, 1, 2, 3].map((i) => ({ id: `H${i + 1}`, x: 11 + 6 * i, y: 8.5, H: 0, lamps: [L(90, 160, IES70, 0)] })),
+      { id: "U1", x: 2.5, y: 16, H: 0, lamps: [L(0, 175, IES70, 0), L(180, 175, IES70, 0)] },
+      { id: "U2", x: 37.5, y: 16, H: 0, lamps: [L(0, 175, IES70, 0), L(180, 175, IES70, 0)] },
+      ...[[4, 0], [20, 0], [36, 0]].map(([x, y], i) => ({ id: `T${i + 1}`, x, y, H: 6, lamps: [L(90, 20, IES70, 0.5)] })),
+    ],
+    areas: [{ name: "Sân trước", x0: 0, y0: 1, L: 40, W: 9, step: 1, req: "TCVN13608-B7-I-cv-santhoatdong" }],
+    objects: [
+      { id: "NH1", type: "building", pts: [[8, 10], [32, 10], [32, 22], [8, 22]], H: 18, mat: "Sơn trắng, đá trắng", rho: 0.75, zone: "E3", faces: [1], step: 1 },
+      { id: "TR1", type: "wall", pts: [[0, 0.5], [40, 0.5]], H: 2.2, mat: "Tường rào sơn sáng", rho: 0.5, step: 0.5 },
+      { id: "C1", type: "tree", pts: [[4, 16]], H: 8, crownR: 3, mat: "Tán lá cây", rho: 0.15 },
+      { id: "C2", type: "tree", pts: [[36, 16]], H: 8, crownR: 3, mat: "Tán lá cây", rho: 0.15 },
+    ],
+  },
 };
 
 const reqOf = (id) => { const r = findReq(id); return r ? { id: r.id, Eav: r.Eav, Uo: r.Uo, label: r.label } : null; };
@@ -57,5 +75,6 @@ export function sampleState(kind, iesIndex = []) {
   else if (S.poles.some((p) => p.lamps.some((l) => !matchAreaIes(l.iesWant, iesIndex))))
     warnings.push(`Mẫu dùng bộ đèn ${IES70} / ${IES90}; thư viện không có nên tạm dùng ${fallback.name.replace(/\.ies$/i, "")} — chọn lại IES từng đèn nếu cần.`);
   const areas = S.areas.map((a) => ({ poly: null, MF: null, ...a, req: reqOf(a.req) }));
-  return { poles, areas, warnings, name: S.name, select: S.select || null };
+  const objects = (S.objects || []).map((o) => ({ crownR: null, reqE: null, reqL: null, step: null, ...o, pts: o.pts.map((p) => [...p]) }));
+  return { poles, areas, objects, warnings, name: S.name, select: S.select || null, tab: S.tab || null };
 }

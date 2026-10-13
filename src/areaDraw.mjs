@@ -21,8 +21,9 @@ export function heatColor(t) {
 }
 
 /** Khung bao (m) của trụ + vùng, thêm lề. */
-export function worldBounds(poles, areas, pad = 3) {
+export function worldBounds(poles, areas, pad = 3, objects = []) {
   const xs = [], ys = [];
+  for (const o of objects || []) for (const [x, y] of o.pts || []) { const r = o.type === "tree" ? (o.crownR || 2) : 0; xs.push(x - r, x + r); ys.push(y - r, y + r); }
   for (const p of poles) { xs.push(p.x); ys.push(p.y); }
   for (const a of areas) {
     if (a.poly) for (const [x, y] of a.poly) { xs.push(x); ys.push(y); }
@@ -36,8 +37,8 @@ export function worldBounds(poles, areas, pad = 3) {
  * Vẽ mặt bằng. opts: {sel (id trụ đang chọn), scaleE: [Emin, Emax] cho thang màu, dark (nền tối), grid (lưới 5 m), labels}
  * result: kết quả calcArea (có thể null — chỉ vẽ hình học).
  */
-export function drawAreaPlan(ctx, Wpx, Hpx, { poles, areas, result = null }, opts = {}) {
-  const b = opts.bounds || worldBounds(poles, areas);          // giữ khung cố định khi đang kéo trụ
+export function drawAreaPlan(ctx, Wpx, Hpx, { poles, areas, result = null, objects = [] }, opts = {}) {
+  const b = opts.bounds || worldBounds(poles, areas, 3, objects);          // giữ khung cố định khi đang kéo trụ
   const k = opts.px || 1;                                   // hệ số điểm ảnh (devicePixelRatio / độ phân giải PDF)
   const m = 34 * k, sc = Math.min((Wpx - 2 * m) / (b.x1 - b.x0), (Hpx - 2 * m) / (b.y1 - b.y0));
   const ox = (Wpx - sc * (b.x1 - b.x0)) / 2, oy = (Hpx - sc * (b.y1 - b.y0)) / 2;
@@ -82,6 +83,36 @@ export function drawAreaPlan(ctx, Wpx, Hpx, { poles, areas, result = null }, opt
       ctx.fillStyle = "#1c2430"; ctx.fillText(label, sx + 8 * k, sy + 17 * k);
     }
   });
+  // vật thể: tòa nhà (đa giác), tường rào (đường dày), cây (vòng tán) + nét đang vẽ
+  for (const o of objects || []) {
+    const sel = o.id === opts.selObj;
+    ctx.setLineDash([]);
+    if (o.type === "building") {
+      ctx.beginPath(); o.pts.forEach(([x, y], i) => { const [sx, sy] = S(x, y); i ? ctx.lineTo(sx, sy) : ctx.moveTo(sx, sy); }); ctx.closePath();
+      ctx.fillStyle = sel ? "rgba(245,158,11,0.35)" : "rgba(92,104,122,0.55)"; ctx.fill();
+      ctx.strokeStyle = sel ? "#f59e0b" : "#3b4554"; ctx.lineWidth = (sel ? 2.6 : 1.6) * k; ctx.stroke();
+      if (opts.labels !== false) { o.pts.forEach(([x, y], i) => { const [x2, y2] = o.pts[(i + 1) % o.pts.length], [sx, sy] = S((x + x2) / 2, (y + y2) / 2);
+        ctx.fillStyle = "#fff"; ctx.font = `600 ${9.5 * k}px sans-serif`; ctx.textAlign = "center"; ctx.fillText(String(i + 1), sx, sy + 3 * k); }); }
+    } else if (o.type === "wall") {
+      ctx.beginPath(); o.pts.forEach(([x, y], i) => { const [sx, sy] = S(x, y); i ? ctx.lineTo(sx, sy) : ctx.moveTo(sx, sy); });
+      ctx.strokeStyle = sel ? "#f59e0b" : "#8a5a12"; ctx.lineWidth = Math.max(3 * k, 0.25 * sc); ctx.lineCap = "round"; ctx.stroke(); ctx.lineCap = "butt";
+    } else if (o.type === "tree") {
+      const [sx, sy] = S(o.pts[0][0], o.pts[0][1]), r = Math.max(4 * k, (o.crownR || 2) * sc);
+      ctx.beginPath(); ctx.arc(sx, sy, r, 0, 2 * Math.PI); ctx.fillStyle = sel ? "rgba(245,158,11,0.35)" : "rgba(64,140,72,0.45)"; ctx.fill();
+      ctx.strokeStyle = sel ? "#f59e0b" : "#2f6b36"; ctx.lineWidth = (sel ? 2.4 : 1.4) * k; ctx.stroke();
+      ctx.fillStyle = "#4a3a2a"; ctx.beginPath(); ctx.arc(sx, sy, 2.5 * k, 0, 2 * Math.PI); ctx.fill();
+    }
+    if (opts.labels !== false) { const [cx, cy] = o.pts.reduce((a, p) => [a[0] + p[0] / o.pts.length, a[1] + p[1] / o.pts.length], [0, 0]), [sx, sy] = S(cx, cy);
+      ctx.font = `bold ${10.5 * k}px sans-serif`; ctx.textAlign = "center"; const w = ctx.measureText(o.id).width;
+      ctx.fillStyle = "rgba(255,255,255,0.85)"; ctx.fillRect(sx - w / 2 - 3 * k, sy - 10 * k - (o.type === "tree" ? 0 : 4 * k), w + 6 * k, 13 * k);
+      ctx.fillStyle = "#1c2430"; ctx.fillText(o.id, sx, sy - (o.type === "tree" ? 0 : 4 * k)); }
+  }
+  if (opts.draft && opts.draft.pts.length) {
+    const d = opts.draft; ctx.setLineDash([6 * k, 4 * k]); ctx.strokeStyle = "#f59e0b"; ctx.lineWidth = 2 * k;
+    ctx.beginPath(); [...d.pts, ...(d.hover ? [d.hover] : [])].forEach(([x, y], i) => { const [sx, sy] = S(x, y); i ? ctx.lineTo(sx, sy) : ctx.moveTo(sx, sy); });
+    if (d.type === "building" && d.pts.length > 2) ctx.closePath(); ctx.stroke(); ctx.setLineDash([]);
+    ctx.fillStyle = "#f59e0b"; for (const [x, y] of d.pts) { const [sx, sy] = S(x, y); ctx.beginPath(); ctx.arc(sx, sy, 3.5 * k, 0, 2 * Math.PI); ctx.fill(); }
+  }
   // trụ + hướng chiếu từng đèn (đoạn dài ∝ H·tan(nghiêng), tối thiểu 3 m); đèn chọn tô đậm
   for (const p of poles) {
     const sel = p.id === opts.sel, L = poleLamps(p);

@@ -8,10 +8,11 @@ export function illuminanceAtPoint(P, lums, I, MF) {
   let E = 0;
   for (const L of lums) {
     const { C, gamma, dist } = angleLumToPoint(L, P);
-    if (gamma >= 90) continue;
-    const Iv = I(C, gamma);
+    const h = L.H - (P.z || 0);                  // độ cao đèn trên mặt tính; đèn ngang/thấp hơn mặt → không rọi
+    if (h <= 0) continue;
+    const Iv = I(C, gamma);                      // γ ≥ 90° (trong hệ đèn) vẫn tính: đèn nghiêng nhiều / đèn pha có IES 0–180°
     if (Iv <= 0) continue;
-    E += Iv * L.H / (dist * dist * dist);
+    E += Iv * h / (dist * dist * dist);
   }
   return E * MF;
 }

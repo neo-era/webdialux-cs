@@ -10,10 +10,19 @@ const cross = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a
 const nrm = (a) => { const l = Math.hypot(...a) || 1; return [a[0] / l, a[1] / l, a[2] / l]; };
 
 /** Camera mặc định: nhìn từ phía nam-tây, nghiêng 32°, khoảng cách theo kích thước khu vực. */
-export function defaultCamera(poles, areas) {
-  const b = worldBounds(poles, areas, 2);
+export function defaultCamera(poles, areas, objects = []) {
+  const b = worldBounds(poles, areas, 2, objects);
   const span = Math.max(b.x1 - b.x0, b.y1 - b.y0, 10);
-  return { tx: (b.x0 + b.x1) / 2, ty: (b.y0 + b.y1) / 2, az: -60, el: 34, dist: span * 0.95 };
+  // nhìn từ phía Tây Nam; nếu có tòa nhà có mặt được đánh giá thì nhìn chếch vào mặt đó (pháp tuyến hướng về camera)
+  let az = 60;
+  const B = (objects || []).find((o) => o.type === "building" && o.faces && o.faces.length);
+  if (B) {
+    const i = B.faces[0] - 1, A = B.pts[i], C2 = B.pts[(i + 1) % B.pts.length];
+    if (A && C2) { const ccw = B.pts.reduce((s, [x, y], k) => { const [x2, y2] = B.pts[(k + 1) % B.pts.length]; return s + x * y2 - x2 * y; }, 0) > 0;
+      const dx = C2[0] - A[0], dy = C2[1] - A[1], n = ccw ? [dy, -dx] : [-dy, dx];
+      az = Math.atan2(-n[1], -n[0]) * 180 / Math.PI + 25; }                     // camera đứng phía trước mặt, lệch 25°
+  }
+  return { tx: (b.x0 + b.x1) / 2, ty: (b.y0 + b.y1) / 2, az, el: 26, dist: span * 1.05 };
 }
 
 /** Phép chiếu phối cảnh. Trả {P(x,y,z) → [sx, sy, depth] | null}. */
@@ -56,8 +65,8 @@ export function rampCss(cct = 4000) {                             // dải màu 
   const st = [[0, [32, 36, 44]], [30, mix([32, 36, 44], LC, 0.4)], [65, mix([32, 36, 44], LC, 0.82)], [90, LC.map(Math.round)], [100, mix(LC, [255, 252, 245], 0.55)]];
   return st.map(([p, c]) => `rgb(${c.join(",")}) ${p}%`).join(",");
 }
-export function drawArea3D(ctx, Wpx, Hpx, { poles, areas, result = null }, opts = {}) {
-  const k = opts.px || 1, cam = opts.cam || defaultCamera(poles, areas);
+export function drawArea3D(ctx, Wpx, Hpx, { poles, areas, result = null, objects = [], arch = null }, opts = {}) {
+  const k = opts.px || 1, cam = opts.cam || defaultCamera(poles, areas, objects);
   const pr = makeProjector(cam, Wpx, Hpx), P = pr.P;
   const LC = cctRGB(opts.cct || 4000), white = [255, 252, 245], ground = [20, 24, 30];
   const mix = (A, B, u) => [A[0] + (B[0] - A[0]) * u, A[1] + (B[1] - A[1]) * u, A[2] + (B[2] - A[2]) * u];
@@ -76,7 +85,7 @@ export function drawArea3D(ctx, Wpx, Hpx, { poles, areas, result = null }, opts 
   ctx.globalAlpha = 1;
 
   // mặt đất xung quanh (tấm nền tối + lưới 5 m)
-  const b0 = worldBounds(poles, areas, 0), ext = Math.max(b0.x1 - b0.x0, b0.y1 - b0.y0, 20) * 1.5;
+  const b0 = worldBounds(poles, areas, 0, objects), ext = Math.max(b0.x1 - b0.x0, b0.y1 - b0.y0, 20) * 1.5;
   const b = { x0: b0.x0 - ext, y0: b0.y0 - ext, x1: b0.x1 + ext, y1: b0.y1 + ext };
   const quad = (pts, fill, stroke, closed = true) => {
     const s = pr.poly(pts); if (!s) return false;
@@ -93,10 +102,17 @@ export function drawArea3D(ctx, Wpx, Hpx, { poles, areas, result = null }, opts 
   // các vùng: tô từng ô lưới theo E (vẽ xa trước)
   let lo = Infinity, hi = -Infinity;
   if (result) for (const a of result.areas) if (!a.empty) { lo = Math.min(lo, a.Emin); hi = Math.max(hi, a.Emax); }
+  if (arch) for (const f of arch.surfaces) if (f.E.length) { lo = Math.min(lo, f.Emin); hi = Math.max(hi, f.Emax); }
   if (!isFinite(lo)) { lo = 0; hi = 0; }
-  const span = Math.max(1e-6, hi - lo);
+  // thang tô: chuẩn theo phân vị 95% (không để vài điểm sát chân đèn làm tối cả cảnh), nén gamma 0,7 như mắt cảm nhận
+  const all = [];
+  if (result) for (const a of result.areas) if (!a.empty) for (let i = 0; i < a.E.length; i += Math.max(1, Math.floor(a.E.length / 4000))) all.push(a.E[i]);
+  if (arch) for (const f of arch.surfaces) for (let i = 0; i < f.E.length; i += Math.max(1, Math.floor(f.E.length / 2000))) all.push(f.E[i]);
+  all.sort((x, y) => x - y);
+  const p95 = all.length ? Math.max(1e-6, all[Math.min(all.length - 1, Math.floor(all.length * 0.95))]) : 1;
+  const tone = (e) => Math.pow(Math.max(0, Math.min(1, e / p95)), 0.7);
   // ô lưới + màu: dựng 1 lần cho mỗi kết quả (WeakMap), khi xoay chỉ chiếu lại
-  const ck = `${opts.cct || 4000}`;
+  const ck = `${opts.cct || 4000}|${p95}`;
   let cache = result && colorCache.get(result);
   if (result && (!cache || cache.ck !== ck)) {
     const list = [];
@@ -104,7 +120,7 @@ export function drawArea3D(ctx, Wpx, Hpx, { poles, areas, result = null }, opts 
       if (a.empty) continue; const g = a.grid;
       for (let j = 0; j < g.ny; j++) for (let i = 0; i < g.nx; i++) {
         const c = g.cell[j * g.nx + i]; if (c < 0) continue;
-        const col = ramp((a.E[c] - lo) / span);
+        const col = ramp(tone(a.E[c]));
         list.push({ x0: g.x0 + g.dx * i, y0: g.y0 + g.dy * j, dx: g.dx, dy: g.dy, fill: `rgb(${col[0] | 0},${col[1] | 0},${col[2] | 0})`, d: 0 });
       }
     }
@@ -119,23 +135,56 @@ export function drawArea3D(ctx, Wpx, Hpx, { poles, areas, result = null }, opts 
           let sum = 0, n = 0;
           for (let j = J; j < Math.min(g.ny, J + f); j++) for (let i = I; i < Math.min(g.nx, I + f); i++) { const c = g.cell[j * g.nx + i]; if (c >= 0) { sum += a.E[c]; n++; } }
           if (!n) continue;
-          const col = ramp((sum / n - lo) / span);
+          const col = ramp(tone(sum / n));
           coarse.push({ x0: g.x0 + g.dx * I, y0: g.y0 + g.dy * J, dx: g.dx * Math.min(f, g.nx - I), dy: g.dy * Math.min(f, g.ny - J), fill: `rgb(${col[0] | 0},${col[1] | 0},${col[2] | 0})`, d: 0 });
         }
       }
     }
     cache = { ck, list, coarse }; colorCache.set(result, cache);
   }
-  if (cache) {
-    const vis = [];
-    for (const c of (opts.fast ? cache.coarse : cache.list)) { const q = P(c.x0 + c.dx / 2, c.y0 + c.dy / 2); c.d = q ? q[2] : -1; if (c.d > 0 || !opts.fast) vis.push(c); }
-    vis.sort((p, q) => q.d - p.d);
-    ctx.lineWidth = 0.8;
-    for (const c of vis) {
-      const s = pr.poly([[c.x0, c.y0], [c.x0 + c.dx, c.y0], [c.x0 + c.dx, c.y0 + c.dy], [c.x0, c.y0 + c.dy]]); if (!s) continue;
-      ctx.beginPath(); ctx.moveTo(s[0][0], s[0][1]); for (let n = 1; n < s.length; n++) ctx.lineTo(s[n][0], s[n][1]); ctx.closePath();
-      ctx.fillStyle = c.fill; ctx.fill(); if (!opts.fast) { ctx.strokeStyle = c.fill; ctx.stroke(); }   // khử khe hở giữa ô
+  const items = [];                                                  // đa giác 3D cần vẽ (sắp theo độ sâu, vẽ xa trước)
+  const Cm = pr.C;
+  if (cache) for (const c of (opts.fast ? cache.coarse : cache.list))
+    items.push({ q: [[c.x0, c.y0, 0], [c.x0 + c.dx, c.y0, 0], [c.x0 + c.dx, c.y0 + c.dy, 0], [c.x0, c.y0 + c.dy, 0]], fill: c.fill, seam: !opts.fast });
+  // bề mặt vật thể (tô theo độ rọi đã tính); mặt quay lưng camera thì bỏ
+  const colE = (e) => { const c = ramp(tone(e)); return `rgb(${c[0] | 0},${c[1] | 0},${c[2] | 0})`; };
+  if (arch) for (const f of arch.surfaces) {
+    if (f.kind === "face") {
+      const mx = (f.A[0] + f.B[0]) / 2, my = (f.A[1] + f.B[1]) / 2;
+      if ((Cm[0] - mx) * f.n[0] + (Cm[1] - my) * f.n[1] <= 0) continue;
+      const ux = (f.B[0] - f.A[0]) / f.nu, uy = (f.B[1] - f.A[1]) / f.nu;
+      for (let j = 0; j < f.nv; j++) for (let i = 0; i < f.nu; i++) {
+        const x0 = f.A[0] + ux * i, y0 = f.A[1] + uy * i, z0 = f.dv * j, z1 = z0 + f.dv;
+        items.push({ q: [[x0, y0, z0], [x0 + ux, y0 + uy, z0], [x0 + ux, y0 + uy, z1], [x0, y0, z1]], fill: colE(f.E[j * f.nu + i]), seam: true });
+      }
+    } else if (f.kind === "crown") {
+      const [cx, cy, cz] = f.center, R = f.R, n = f.nLat;
+      f.points.forEach((p, i) => {
+        if ((Cm[0] - p.x) * p.n[0] + (Cm[1] - p.y) * p.n[1] + (Cm[2] - p.z) * p.n[2] <= 0) return;
+        const t0 = Math.PI * p.lat / n, t1 = Math.PI * (p.lat + 1) / n, f0 = 2 * Math.PI * p.lon / p.nLon, f1 = 2 * Math.PI * (p.lon + 1) / p.nLon;
+        const S3 = (t, ph) => [cx + R * Math.sin(t) * Math.cos(ph), cy + R * Math.sin(t) * Math.sin(ph), cz + R * Math.cos(t)];
+        const e = f.E[i], c = ramp(tone(e)), leaf = [26, 54, 30];
+        const g = [leaf[0] + (c[0] - leaf[0]) * 0.75, leaf[1] + (c[1] - leaf[1]) * 0.85, leaf[2] + (c[2] - leaf[2]) * 0.6];   // ánh xanh lá
+        items.push({ q: [S3(t0, f0), S3(t0, f1), S3(t1, f1), S3(t1, f0)], fill: `rgb(${g[0] | 0},${g[1] | 0},${g[2] | 0})`, seam: true });
+      });
     }
+  }
+  for (const o of objects || []) {
+    if (o.type === "building") items.push({ q: o.pts.map(([x, y]) => [x, y, o.H]), fill: "rgb(30,33,40)", stroke: "rgba(150,160,175,0.35)" });   // mái
+    if (o.type === "wall") for (let i = 0; i + 1 < o.pts.length; i++) {                                                        // đỉnh tường
+      const [A, B] = [o.pts[i], o.pts[i + 1]]; items.push({ q: [[A[0], A[1], o.H], [B[0], B[1], o.H]], line: "rgba(190,195,205,0.7)", w: 1.6 * k });
+    }
+    if (o.type === "tree") { const [x, y] = o.pts[0], R = o.crownR || Math.max(0.5, o.H / 3); items.push({ q: [[x, y, 0], [x, y, o.H - 2 * R + 0.2]], line: "#4a3a2a", w: Math.max(2, 3 * k) }); }
+  }
+  for (const it of items) { let dz = 0; for (const p of it.q) { const v = [p[0] - Cm[0], p[1] - Cm[1], p[2] - Cm[2]]; dz += Math.hypot(...v); } it.d = dz / it.q.length; }
+  items.sort((p, q) => q.d - p.d);
+  ctx.lineWidth = 0.8;
+  for (const it of items) {
+    const s2 = pr.poly(it.q); if (!s2) continue;
+    ctx.beginPath(); ctx.moveTo(s2[0][0], s2[0][1]); for (let n = 1; n < s2.length; n++) ctx.lineTo(s2[n][0], s2[n][1]);
+    if (it.line) { ctx.strokeStyle = it.line; ctx.lineWidth = it.w; ctx.stroke(); ctx.lineWidth = 0.8; continue; }
+    ctx.closePath(); ctx.fillStyle = it.fill; ctx.fill();
+    if (it.stroke) { ctx.strokeStyle = it.stroke; ctx.stroke(); } else if (it.seam) { ctx.strokeStyle = it.fill; ctx.stroke(); }   // khử khe hở giữa ô
   }
   // viền vùng + tên
   ctx.lineWidth = 1.4 * k; ctx.font = `600 ${11.5 * k}px sans-serif`; ctx.textAlign = "center";
@@ -156,20 +205,23 @@ export function drawArea3D(ctx, Wpx, Hpx, { poles, areas, result = null }, opts 
   });
 
   // trụ + cần + đèn (vẽ xa trước), quầng sáng và chùm sáng mờ
-  const items = poles.map((p) => ({ p, d: (P(p.x, p.y) || [0, 0, 1e9])[2] })).sort((a, b) => b.d - a.d);
+  const poleOrder = poles.map((p) => ({ p, d: (P(p.x, p.y) || [0, 0, 1e9])[2] })).sort((a, b) => b.d - a.d);
   ctx.globalCompositeOperation = "lighter";
-  for (const { p } of items) for (const l of poleLamps(p)) {           // chùm sáng: nón mờ từ đèn xuống điểm ngắm
+  for (const { p } of poleOrder) for (const l of poleLamps(p)) {           // chùm sáng: nón mờ từ đèn xuống điểm ngắm
     if (!l.ies) continue;
-    const L = lampToLum(p, l), a = (l.aim || 0) * DEG, reach = L.H * Math.tan(Math.min(70, l.tilt || 0) * DEG);
-    const gx = L.x + reach * Math.cos(a), gy = L.y + reach * Math.sin(a), rad = Math.max(1.5, L.H * 0.55);
-    const top = P(L.x, L.y, L.H), g1 = P(gx - rad * Math.sin(a), gy + rad * Math.cos(a)), g2 = P(gx + rad * Math.sin(a), gy - rad * Math.cos(a));
+    // trục quang theo hướng + nghiêng (0° xuống, 90° ngang, 180° lên); chùm đi tới mặt đất, hoặc dài 8 m nếu hắt ngang/lên
+    const L = lampToLum(p, l), a = (l.aim || 0) * DEG, t = (l.tilt || 0) * DEG;
+    const dir = [Math.sin(t) * Math.cos(a), Math.sin(t) * Math.sin(a), -Math.cos(t)];
+    const len = dir[2] < -0.3 ? Math.min(40, L.H / -dir[2]) : 8, rad = Math.max(1.2, len * 0.42);
+    const ex = L.x + dir[0] * len, ey = L.y + dir[1] * len, ez = Math.max(0, L.H + dir[2] * len);
+    const top = P(L.x, L.y, L.H), g1 = P(ex - rad * Math.sin(a), ey + rad * Math.cos(a), ez), g2 = P(ex + rad * Math.sin(a), ey - rad * Math.cos(a), ez);
     if (!top || !g1 || !g2) continue;
     const gr = ctx.createLinearGradient(top[0], top[1], (g1[0] + g2[0]) / 2, (g1[1] + g2[1]) / 2);
     gr.addColorStop(0, `rgba(${LC.map((v) => v | 0).join(",")},0.20)`); gr.addColorStop(1, `rgba(${LC.map((v) => v | 0).join(",")},0)`);
     ctx.fillStyle = gr; ctx.beginPath(); ctx.moveTo(top[0], top[1]); ctx.lineTo(g1[0], g1[1]); ctx.lineTo(g2[0], g2[1]); ctx.closePath(); ctx.fill();
   }
   ctx.globalCompositeOperation = "source-over";
-  for (const { p } of items) {
+  for (const { p } of poleOrder) {
     const base = P(p.x, p.y), topP = P(p.x, p.y, p.H); if (!base || !topP) continue;
     const s = pr.f / base[2];                                         // px trên 1 m tại chân trụ
     ctx.strokeStyle = "#9aa4b2"; ctx.lineWidth = Math.max(1.2 * k, Math.min(6 * k, 0.16 * s)); ctx.lineCap = "round";
@@ -187,5 +239,5 @@ export function drawArea3D(ctx, Wpx, Hpx, { poles, areas, result = null }, opts 
     if (opts.labels !== false) { ctx.fillStyle = "#cfd6e2"; ctx.font = `bold ${10.5 * k}px sans-serif`; ctx.textAlign = "center"; ctx.fillText(p.id, topP[0], topP[1] - 9 * k); }
   }
   ctx.restore();
-  return { cam, range: [lo, hi] };
+  return { cam, range: [lo, hi], p95 };
 }

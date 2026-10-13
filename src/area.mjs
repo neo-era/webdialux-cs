@@ -7,6 +7,7 @@ import { makeIntensity } from "./ies.mjs";
 import { illuminanceAtPoint } from "./photometry.mjs";
 import { AREA_REQS, findReq } from "./areaReq.mjs";
 import { VERSION } from "./version.mjs";
+import { segmentBlocked, calcArch, OBJ_HEAD, objectsSheetRows, TYPE_LABEL } from "./arch.mjs";
 
 export const AREA_COLS = {
   id: "Trụ", x: "x (m)", y: "y (m)", H: "Cao H (m)", aim: "Hướng chiếu (độ)", tilt: "Góc nghiêng (độ)",
@@ -86,7 +87,8 @@ export function areaGrid(a) {
  * Tính độ rọi các vùng. poles: [{id,x,y,H,aim,tilt,n,ies:{name,ph,power}}]; trụ không có IES bị bỏ qua.
  * areas: [{name, x0,y0,L,W | poly, step, req:{Eav,Uo}, MF}]. MF mặc định = opts.MF (0,8).
  */
-export function calcArea({ poles, areas }, { MF: MF0 = 0.8 } = {}) {
+export function calcArea({ poles, areas, objects = [] }, { MF: MF0 = 0.8 } = {}) {
+  const occ = (objects || []).filter((o) => o.type !== "tree");      // tòa nhà, tường rào đổ bóng xuống mặt đất
   const groups = new Map();                                    // gom theo bộ đèn để dựng I(C,γ) một lần
   let power = 0, nLamps = 0, nPoles = 0;
   for (const p of poles) {
@@ -103,7 +105,23 @@ export function calcArea({ poles, areas }, { MF: MF0 = 0.8 } = {}) {
   const out = areas.map((a) => {
     const MF = a.MF ?? MF0;
     const grid = areaGrid(a);
-    const E = grid.points.map((P) => { let s = 0; for (const g of groups.values()) s += illuminanceAtPoint(P, g.lums, g.I, MF); return s; });
+    const blds = (objects || []).filter((o) => o.type === "building");
+    if (blds.length && grid.points.length) {                          // điểm nằm trong chân tòa nhà không thuộc mặt tính
+      const keep = grid.points.map((P) => !blds.some((o) => inPoly(P.x, P.y, o.pts)));
+      if (keep.some((k) => !k)) {
+        const remap = []; let n = 0; keep.forEach((k, i) => { remap[i] = k ? n++ : -1; });
+        grid.points = grid.points.filter((_, i) => keep[i]); grid.cell = grid.cell.map((c) => (c >= 0 ? remap[c] : -1));
+        grid.inBuilding = keep.length - n;
+      }
+    }
+    const E = grid.points.map((P) => {
+      let s = 0;
+      for (const g of groups.values()) {
+        if (!occ.length) { s += illuminanceAtPoint(P, g.lums, g.I, MF); continue; }
+        for (const L of g.lums) { const e = illuminanceAtPoint(P, [L], g.I, MF); if (e > 0 && !segmentBlocked({ x: P.x, y: P.y, z: 0.01 }, { x: L.x, y: L.y, z: L.H }, occ)) s += e; }
+      }
+      return s;
+    });
     const n = E.length;
     if (!n) return { name: a.name, grid, E, Eav: null, Emin: null, Emax: null, Uo: null, Ud: null, MF, req: a.req || null, okE: false, okU: false, pass: false, empty: true, power, lpd: null };
     let Emin = Infinity, Emax = -Infinity, sum = 0;
@@ -168,11 +186,11 @@ export function parseAreaRows({ poleRows = [], areaRows = [], lampRows = [] }, i
     if (!p) { warnings.push(`Đèn dòng ${i + 2} (sheet DEN TREN TRU): không có trụ "${pid}" trong sheet VI TRI TRU — bỏ qua`); return; }
     const k = num(row[LAMP_COLS.k]) ?? (byPole.get(pid)?.length || 0) + 1;
     let tilt = num(row[LAMP_COLS.tilt]) ?? 0;
-    if (!(tilt >= 0 && tilt <= 90)) { warnings.push(`Trụ ${pid} đèn ${k}: góc nghiêng ${tilt}° ngoài 0–90° — dùng 0°`); tilt = 0; }
+    if (!(tilt >= 0 && tilt <= 180)) { warnings.push(`Trụ ${pid} đèn ${k}: góc nghiêng ${tilt}° ngoài 0–180° — dùng 0°`); tilt = 0; }
     const want = row[LAMP_COLS.ies];
     const ies = want ? resolveIes(want, iesIndex, `Trụ ${pid} đèn ${k}`, warnings) : p.ies;
     const H = num(row[LAMP_COLS.H]);
-    const l = { k, aim: num(row[LAMP_COLS.aim]) ?? 0, tilt, arm: Math.max(0, num(row[LAMP_COLS.arm]) ?? 0), H: H > 0 ? H : null,
+    const l = { k, aim: num(row[LAMP_COLS.aim]) ?? 0, tilt, arm: Math.max(0, num(row[LAMP_COLS.arm]) ?? 0), H: H != null && H >= 0 ? H : null,
       ies: ies || null, iesWant: want ? String(want) : (p.iesWant || "") };
     if (!byPole.has(pid)) byPole.set(pid, []);
     byPole.get(pid).push(l);
@@ -253,9 +271,40 @@ function reqSheet(wb) {
 }
 
 /** Workbook kết quả: trụ (sau khi sửa trên app), vùng, kết quả, lưới E từng vùng. */
-export async function buildAreaWorkbook(ExcelJS, { poles, areas, result, projectName = "", version = VERSION, date = new Date() }) {
+export function objectsSheet(wb, objects) {
+  const ws = wb.addWorksheet("VAT THE");
+  headRow(ws, OBJ_HEAD, "FF8A5A12", [8, 11, 40, 8, 10, 22, 10, 10, 11, 11, 12, 9]);
+  for (const r of objectsSheetRows(objects)) bodyRow(ws, r);
+  return ws;
+}
+function archResultSheet(wb, arch) {
+  const ws = wb.addWorksheet("KET QUA MAT DUNG");
+  headRow(ws, ["Bề mặt", "Vật thể", "Loại", "Diện tích (m²)", "Số điểm", "ρ", "Eav (lx)", "Emin (lx)", "Emax (lx)", "Uo", "L (cd/m²)", "Eav YC ≥", "L YC ≤", "Kết quả"], "FF8A5A12", [36, 9, 11, 11, 8, 6, 9, 9, 9, 7, 10, 9, 8, 12]);
+  for (const s of arch.surfaces) {
+    const r = bodyRow(ws, [s.name, s.objId, TYPE_LABEL[s.obj.type], Math.round(s.area * 10) / 10, s.E.length, s.rho, s.Eav, s.Emin, s.Emax, s.Uo, s.Lav,
+      s.req ? s.req.Emin : null, s.req ? s.req.Lmax : null, s.req && (s.req.Emin != null || s.req.Lmax != null) ? (s.pass ? "ĐẠT" : "KHÔNG ĐẠT") : "—"]);
+    [7, 8, 9].forEach((k) => { r.getCell(k).numFmt = "0.0"; }); [10, 11].forEach((k) => { r.getCell(k).numFmt = "0.00"; });
+    const k = r.getCell(14); if (k.value !== "—") { k.fill = fill(s.pass ? "FFC6EFCE" : "FFFFC7CE"); k.font = { bold: true, color: { argb: s.pass ? "FF006100" : "FF9C0006" } }; }
+  }
+  // lưới giá trị từng mặt đứng (dòng = cao độ, cột = dọc mặt)
+  const wg = wb.addWorksheet("LUOI MAT DUNG"); let row = 1;
+  for (const s of arch.surfaces) {
+    if (s.kind !== "face") continue;
+    wg.getCell(row, 1).value = `${s.name} — độ rọi [lx] (dòng: cao độ m, cột: khoảng cách dọc mặt m)`; wg.getCell(row, 1).font = { bold: true, color: { argb: "FF8A5A12" } }; row++;
+    wg.getCell(row, 1).value = "z \\ u"; for (let i = 0; i < s.nu; i++) { const c = wg.getCell(row, i + 2); c.value = Math.round(s.du * (i + 0.5) * 100) / 100; c.font = { bold: true }; c.fill = fill("FFEEF1F6"); } row++;
+    for (let j = s.nv - 1; j >= 0; j--, row++) {
+      const c0 = wg.getCell(row, 1); c0.value = Math.round(s.dv * (j + 0.5) * 100) / 100; c0.font = { bold: true }; c0.fill = fill("FFEEF1F6");
+      for (let i = 0; i < s.nu; i++) wg.getCell(row, i + 2).value = Math.round(s.E[j * s.nu + i] * 10) / 10;
+    }
+    row++;
+  }
+  return ws;
+}
+
+export async function buildAreaWorkbook(ExcelJS, { poles, areas, objects = [], result, arch = null, projectName = "", version = VERSION, date = new Date() }) {
   const wb = new ExcelJS.Workbook(); wb.creator = `WebDialux-CS ${version}`; wb.created = date;
   polesSheet(wb, poles); lampsSheet(wb, poles); areasSheet(wb, areas);
+  if (objects.length) objectsSheet(wb, objects);
   const ws = wb.addWorksheet("KET QUA");
   ws.mergeCells("A1:J1"); ws.getCell("A1").value = "KẾT QUẢ TÍNH CHIẾU SÁNG KHU VỰC" + (projectName ? " — " + projectName : "");
   ws.getCell("A1").font = { bold: true, size: 14, color: { argb: "FF1F4E79" } };
@@ -284,6 +333,7 @@ export async function buildAreaWorkbook(ExcelJS, { poles, areas, result, project
     }
     wg.views = [{ state: "frozen", xSplit: 1, ySplit: 1 }];
   });
+  if (objects.length) archResultSheet(wb, arch || calcArch({ poles, objects }));
   reqSheet(wb);
   return wb;
 }
@@ -292,7 +342,8 @@ export async function buildAreaWorkbook(ExcelJS, { poles, areas, result, project
 export async function buildAreaTemplate(ExcelJS, { version = VERSION, sample = null } = {}) {
   const wb = new ExcelJS.Workbook(); wb.creator = `WebDialux-CS ${version}`;
   if (sample) {                                                   // mẫu dựng sẵn (công viên, quảng trường): ghi đủ trụ, đèn, vùng
-    polesSheet(wb, sample.poles); lampsSheet(wb, sample.poles); areasSheet(wb, sample.areas); reqSheet(wb); helpSheet(wb);
+    polesSheet(wb, sample.poles); lampsSheet(wb, sample.poles); areasSheet(wb, sample.areas);
+    objectsSheet(wb, sample.objects || []); reqSheet(wb); helpSheet(wb);
     return wb;
   }
   const poles = [
@@ -324,6 +375,8 @@ function helpSheet(wb) {
     "Số đèn: số bộ đèn giống nhau trên cùng trụ, cùng hướng (cách khai nhanh).",
     "Trụ nhiều đèn khác hướng/khác loại (trụ quảng trường, cột pha): khai từng đèn ở sheet DEN TREN TRU — Trụ, Đèn số, Hướng, Nghiêng, Vươn (đèn lệch khỏi tâm trụ theo hướng chiếu), Cao độ (trống = theo trụ), Bộ đèn IES (trống = theo trụ). Trụ có dòng ở sheet này thì bỏ qua Hướng/Nghiêng/Số đèn ở VI TRI TRU.",
     "Bộ đèn (IES): tên file IES trong thư mục đã chọn (không cần đuôi .ies). App chỉ hỗ trợ file trắc quang loại C (đèn đường, đa số đèn pha LED).",
+    "Sheet VAT THE (chiếu sáng mỹ thuật): Mã · Loại (Tòa nhà / Tường rào / Cây xanh) · Toạ độ (tòa nhà: đa giác chân \"x y; x y; …\"; tường: đường gấp khúc; cây: \"x y\") · Cao · Bán kính tán (cây) · Vật liệu hoặc hệ số phản xạ ρ · Vùng môi trường E1–E4 · Eav yêu cầu / L tối đa (để trống = theo vùng) · Bước lưới. App tính độ rọi trên từng mặt đứng, tán cây (có che khuất bởi nhà, tường) và độ chói L = ρE/π. Tòa nhà, tường cũng đổ bóng xuống vùng tính mặt đất.",
+    "Đèn hắt lên (đèn âm đất, đèn hắt tường, đèn pha): góc nghiêng 0° = chiếu thẳng xuống, 90° = chiếu ngang, 180° = chiếu thẳng lên. Đèn âm đất: cao 0 m.",
     "Sheet VUNG TINH: mỗi dòng một vùng. Hình chữ nhật: x0, y0, Dài theo x, Rộng theo y. Hoặc đa giác: \"x y; x y; x y\" (dấu chấm thập phân, dấu ; giữa các đỉnh).",
     "Mã yêu cầu: chọn trong sheet YEU CAU (TCVN 13608:2023, EN 12193). Ghi Eav/Uo yêu cầu để sửa ngưỡng hoặc tự đặt ngưỡng khi không dùng mã.",
     "Bước lưới để trống: app tự chọn (1 m với vùng nhỏ). MF để trống: dùng ô MF chung trên app.",

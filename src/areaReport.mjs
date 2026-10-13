@@ -4,6 +4,8 @@ import { vn, fitText, drawTable } from "./report.mjs";
 import { luminaireLabel } from "./mapping.mjs";
 import { poleLamps } from "./area.mjs";
 import { drawArea3D } from "./areaView3D.mjs";
+import { drawFacades } from "./archDraw.mjs";
+import { TYPE_LABEL } from "./arch.mjs";
 
 const OK = [31, 138, 76], BAD = [192, 57, 43];
 
@@ -18,19 +20,19 @@ function header(doc, title) {
 export function areaPlanDataURL(state, result, doc = globalThis.document, W = 1400, H = 900) {
   const cv = doc.createElement("canvas"); cv.width = W; cv.height = H;
   const ctx = cv.getContext("2d");
-  const v = drawAreaPlan(ctx, W, H, { poles: state.poles, areas: state.areas, result }, { labels: true, px: 2 });
+  const v = drawAreaPlan(ctx, W, H, { poles: state.poles, areas: state.areas, objects: state.objects || [], result }, { labels: true, px: 2 });
   return { url: cv.toDataURL("image/png"), range: v.range };
 }
 
 /** Ảnh phối cảnh 3D (PNG dataURL) cho PDF. */
-export function area3DDataURL(state, result, doc = globalThis.document, W = 1400, H = 760) {
+export function area3DDataURL(state, result, doc = globalThis.document, W = 1400, H = 760, arch = null) {
   const cv = doc.createElement("canvas"); cv.width = W; cv.height = H;
-  drawArea3D(cv.getContext("2d"), W, H, { poles: state.poles, areas: state.areas, result }, { px: 1.6 });
+  drawArea3D(cv.getContext("2d"), W, H, { poles: state.poles, areas: state.areas, objects: state.objects || [], arch, result }, { px: 1.6 });
   return cv.toDataURL("image/png");
 }
 
 /** Vẽ toàn bộ báo cáo khu vực vào doc (jsPDF, đã nạp font). */
-export function renderAreaPdf(doc, { state, result, projectName = "", date = new Date() }) {
+export function renderAreaPdf(doc, { state, result, arch = null, projectName = "", date = new Date() }) {
   const M = 14, title = projectName || "Khu vực";
   let y = 18;
   doc.setFontSize(15); doc.text(fitText(doc, title, 182), M, y); y += 6;
@@ -41,6 +43,11 @@ export function renderAreaPdf(doc, { state, result, projectName = "", date = new
 
   // Kết quả theo vùng
   doc.setFontSize(11); doc.text("Kết quả đánh giá", M, y); y += 2;
+  if (!result.areas.length) {
+    doc.setFontSize(9); doc.setTextColor(90, 100, 115);
+    doc.text("Không có vùng tính mặt đất — kết quả chiếu sáng mỹ thuật (mặt đứng, tán cây) ở các trang sau.", M, y + 4); y += 12;
+    doc.setTextColor(30, 30, 40);
+  } else {
   const rows = [["Vùng", "Eav (lx)", "Emin", "Emax", "Uo", "Ud", "Yêu cầu", "Đạt"]];
   for (const a of result.areas) rows.push([a.name, vn(a.Eav, 1), vn(a.Emin, 1), vn(a.Emax, 1), vn(a.Uo, 2), vn(a.Ud, 2),
     a.req ? `Eav ≥ ${a.req.Eav ?? "—"}${a.req.Uo != null ? ", Uo ≥ " + vn(a.req.Uo, 2) : ""}` : "—",
@@ -50,6 +57,7 @@ export function renderAreaPdf(doc, { state, result, projectName = "", date = new
   for (const a of result.areas) if (a.req && a.req.label) { doc.text(fitText(doc, `${a.name}: ${a.req.label}`, 182), M, y); y += 3.6; }
   doc.text(`Uo = Emin/Eav; Ud = Emin/Emax. MF: ${[...new Set(result.areas.map((a) => vn(a.MF, 2)))].join(", ")}.`, M, y); y += 8;
   doc.setTextColor(30, 30, 40);
+  }
 
   // Mặt bằng
   doc.setFontSize(11); doc.text("Mặt bằng bố trí và độ rọi ngang [lx]", M, y); y += 2;
@@ -60,16 +68,16 @@ export function renderAreaPdf(doc, { state, result, projectName = "", date = new
   for (let k = 0; k < 40; k++) { const c = heatColor(k / 39); doc.setFillColor(c[0], c[1], c[2]); doc.rect(M + k * 2, y, 2.05, 3, "F"); }
   doc.setFontSize(7.6); doc.setTextColor(90, 100, 115);
   doc.text(`${vn(range[0], 0)} lx`, M, y + 6.5); doc.text(`${vn((range[0] + range[1]) / 2, 0)}`, M + 38, y + 6.5); doc.text(`${vn(range[1], 0)} lx`, M + 72, y + 6.5);
-  doc.text("Chấm đỏ = trụ có đèn chưa có file IES. Nét đứt = hướng chiếu từng đèn.", M + 95, y + 2.5);
+  doc.text(result.areas.length ? "Chấm đỏ = trụ có đèn chưa có file IES. Nét đứt = hướng chiếu từng đèn." : "Xám = tòa nhà, nâu = tường rào, xanh = tán cây. Nét đứt = hướng chiếu từng đèn.", M + 95, y + 2.5);
   doc.setTextColor(30, 30, 40);
 
   // Trang 2: phối cảnh 3D ban đêm (dữ liệu thật) + trụ + bộ đèn
   doc.addPage(); y = header(doc, title);
   doc.setFontSize(11); doc.text("Mô phỏng chiếu sáng ban đêm (phối cảnh 3D)", M, y); y += 2;
-  const p3 = area3DDataURL(state, result);
+  const p3 = area3DDataURL(state, result, globalThis.document, 1400, 760, arch);
   doc.addImage(p3, "PNG", M, y, 182, 182 * 760 / 1400); y += 182 * 760 / 1400 + 3;
   doc.setFontSize(7.6); doc.setTextColor(110, 120, 135);
-  doc.text("Mặt vùng tô theo lưới độ rọi đã tính (tối → sáng = Emin → Emax); trụ, cần, đèn đúng toạ độ, cao độ và hướng chiếu từng đèn.", M, y); y += 7;
+  doc.text(fitText(doc, "Mặt vùng" + (arch ? ", mặt đứng tòa nhà, tường, tán cây" : "") + " tô theo độ rọi đã tính (tối → sáng = Emin → Emax); trụ, cần, đèn đúng toạ độ, cao độ và hướng chiếu từng đèn.", 182), M, y); y += 7;
   doc.setTextColor(30, 30, 40);
   doc.setFontSize(11); doc.text("Vị trí trụ và bộ đèn trên từng trụ", M, y); y += 2;
   const prow = [["Trụ", "Đèn", "x (m)", "y (m)", "Cao (m)", "Hướng", "Nghiêng", "Vươn (m)", "Bộ đèn"]];
@@ -92,6 +100,36 @@ export function renderAreaPdf(doc, { state, result, projectName = "", date = new
     lrow.push([luminaireLabel(g.ies.name), ph2.manufac || "—", vn(P, 1), vn(F, 0), P ? vn(F / P, 1) : "—", String(g.n), vn(g.n * P / 1000, 2)]);
   }
   y = drawTable(doc, M, y, [64, 30, 16, 18, 14, 14, 26], lrow, { header: true, rh: 6, fs: 8.2 }) + 6;
+
+  // Chiếu sáng mỹ thuật: kết quả mặt đứng + hình trải phẳng
+  if (arch && arch.surfaces.length) {
+    doc.addPage(); y = header(doc, title);
+    doc.setFontSize(11); doc.text("Chiếu sáng mỹ thuật — kết quả trên bề mặt (độ rọi theo pháp tuyến, L = ρ·E/π)", M, y); y += 2;
+    const rows = [["Bề mặt", "ρ", "Eav (lx)", "Emin", "Emax", "Uo", "L (cd/m²)", "Yêu cầu", "Đạt"]];
+    for (const f of arch.surfaces) rows.push([f.name, vn(f.rho, 2), vn(f.Eav, 1), vn(f.Emin, 1), vn(f.Emax, 1), vn(f.Uo, 2), vn(f.Lav, 2),
+      f.req ? `${f.req.Emin != null ? "E ≥ " + f.req.Emin : ""}${f.req.Emin != null && f.req.Lmax != null ? "; " : ""}${f.req.Lmax != null ? "L ≤ " + f.req.Lmax : ""}` : "—",
+      f.req ? { t: f.pass ? "ĐẠT" : "KHÔNG", c: f.pass ? OK : BAD } : "—"]);
+    for (let s0 = 1; s0 < rows.length; s0 += 30) {
+      if (s0 > 1) { doc.addPage(); y = header(doc, title); }
+      y = drawTable(doc, M, y, [56, 10, 17, 13, 13, 11, 17, 29, 16], [rows[0], ...rows.slice(s0, s0 + 30)], { header: true, rh: 6, fs: 7.8 }) + 3;
+    }
+    doc.setFontSize(7.4); doc.setTextColor(110, 120, 135);
+    const objs = state.objects || [];
+    const zones = [...new Set(objs.map((o) => o.zone).filter(Boolean))];
+    doc.text(fitText(doc, `Vật thể: ${objs.map((o) => `${o.id} (${TYPE_LABEL[o.type]}, cao ${vn(o.H, 1)} m)`).join("; ")}.`, 182), M, y); y += 3.6;
+    doc.text(fitText(doc, "Giới hạn độ chói mặt công trình theo vùng môi trường E2 ≤ 5, E3 ≤ 10, E4 ≤ 25 cd/m² (ILP GN01:2011, theo CIE 150). Mức Eav tối thiểu: tham khảo (CIE 094), theo ρ.", 182), M, y); y += 3.6;
+    doc.text(fitText(doc, `Tòa nhà, tường rào chắn sáng (có tính bóng đổ, cả xuống mặt đất); tán cây không chắn.${zones.length ? " Vùng môi trường: " + zones.join(", ") + "." : ""}`, 182), M, y); y += 6;
+    doc.setTextColor(30, 30, 40);
+    for (const o of objs) {
+      if (!arch.surfaces.some((f) => f.objId === o.id)) continue;
+      const ih = 182 * 520 / 1400;
+      if (y + ih + 10 > 284) { doc.addPage(); y = header(doc, title); }
+      doc.setFontSize(10); doc.text(`Bề mặt trải phẳng — ${o.id} (${TYPE_LABEL[o.type]}) [lx]`, M, y); y += 2;
+      const cv = globalThis.document.createElement("canvas"); cv.width = 1400; cv.height = 520;
+      drawFacades(cv.getContext("2d"), 1400, 520, arch, { objId: o.id, px: 1.6 });
+      doc.addImage(cv.toDataURL("image/png"), "PNG", M, y, 182, ih); y += ih + 6;
+    }
+  }
 
   // Lưới giá trị (vùng vừa trang)
   for (const a of result.areas) {

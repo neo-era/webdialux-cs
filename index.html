@@ -143,6 +143,7 @@ body:not(.area) .area-only{display:none!important}
           <button class="menu-item" id="mTemplate" role="menuitem">⬇ Tải Excel mẫu (đường)</button>
           <button class="menu-item" id="mTemplateArea" role="menuitem">⬇ Tải Excel mẫu khu vực</button>
           <button class="menu-item" id="mTemplatePark" role="menuitem">⬇ Tải Excel mẫu công viên</button>
+          <button class="menu-item" id="mTemplateArch" role="menuitem">⬇ Tải Excel mẫu chiếu sáng mỹ thuật</button>
           <button class="menu-item" id="mInstall" role="menuitem" hidden>📲 Cài đặt ứng dụng</button>
           <div class="menu-item menu-hint" id="mIosHint" hidden>📲 Cài trên iPhone/iPad: mở bằng <b>Safari</b>, bấm <b>Chia sẻ</b> ⬆ → <b>Thêm vào MH chính</b></div>
         </div>
@@ -257,6 +258,7 @@ body:not(.area) .area-only{display:none!important}
       <li><b>Toạ độ</b> tính bằng mét, x sang phải, y lên trên. <b>Hướng chiếu</b> đo từ trục +x ngược chiều kim đồng hồ (0° = +x, 90° = +y). <b>Góc nghiêng</b>: 0° = chiếu thẳng xuống, tăng để hắt chùm sáng ra xa theo hướng chiếu.</li>
       <li><b>Sheet VI TRI TRU</b>: Trụ · x · y · Cao H · Hướng chiếu · Góc nghiêng · Số đèn · Bộ đèn (tên file IES). <b>Sheet VUNG TINH</b>: Vùng · Mã yêu cầu · x0 · y0 · Dài theo x · Rộng theo y (hoặc Đa giác "x y; x y; …") · Bước lưới · MF.</li>
       <li><b>Trụ nhiều đèn</b> (trụ quảng trường, cột pha): khai từng đèn ở <b>sheet DEN TREN TRU</b> — Trụ · Đèn số · Hướng chiếu · Góc nghiêng · Vươn (đèn lệch khỏi tâm trụ theo hướng chiếu) · Cao độ (trống = theo trụ) · Bộ đèn IES (trống = theo trụ). Mỗi đèn một IES riêng được. Trên màn hình: chọn trụ → ngăn <b>Chi tiết trụ</b> có sơ đồ hướng, thẻ từng đèn, <b>＋ Thêm đèn</b>, <b>Chia đều 360°</b>, <b>Sao chép bộ đèn sang trụ khác</b>. Thử nhanh: <b>Quảng trường mẫu (trụ 4 đèn)</b> hoặc <b>Công viên mẫu (Bảng 7)</b> — 4 vùng cổng chính, đường trục chính, đường dạo, sân hoạt động; ☰ Menu → <b>Tải Excel mẫu công viên</b> để có file khai sẵn.</li>
+      <li><b>Chiếu sáng mỹ thuật</b> (tòa nhà, tường rào, cây xanh): tab <b>Vật thể</b> → <b>＋ Tòa nhà</b> (bấm từng góc chân nhà, bấm đúp/Enter để xong), <b>＋ Tường rào</b> (bấm các điểm), <b>＋ Cây</b> (bấm gốc cây); hoặc khai ở <b>sheet VAT THE</b> (Mã · Loại · Toạ độ "x y; x y" · Cao · Bán kính tán · Vật liệu/ρ · Vùng môi trường E1–E4 · Eav yêu cầu · L tối đa · Mặt đánh giá · Bước lưới). App tính <b>độ rọi trên từng mặt đứng, tán cây theo pháp tuyến</b> (có che khuất: nhà, tường chắn sáng và đổ bóng xuống mặt đất; tán cây không chắn), độ chói <b>L = ρ·E/π</b>; đánh giá theo vùng: L ≤ 5 / 10 / 25 cd/m² (E2/E3/E4 — ILP GN01:2011 theo CIE 150) và Eav tối thiểu tham khảo (CIE 094) theo ρ, sửa được. Đèn hắt lên: nghiêng 90° = ngang, 180° = thẳng lên; đèn âm đất cao 0 m. Xem <b>Mặt đứng trải phẳng</b> hoặc <b>Phối cảnh 3D</b>; PDF/Excel có bảng kết quả mặt đứng và lưới giá trị. Thử nhanh: <b>Mỹ thuật mẫu</b>; ☰ Menu → <b>Tải Excel mẫu chiếu sáng mỹ thuật</b>.</li>
       <li><b>Phối cảnh 3D</b>: bấm <b>Phối cảnh 3D</b> phía trên mặt bằng — mặt vùng tô theo độ rọi đã tính, trụ/cần/đèn đúng cao độ và hướng chiếu. Kéo để xoay, lăn chuột (hoặc chụm 2 ngón) để phóng to, bấm đúp về góc nhìn mặc định. Báo cáo PDF có thêm trang phối cảnh 3D.</li>
       <li>Trên màn hình: sửa trực tiếp trong bảng, <b>kéo trụ</b> trên mặt bằng, kéo <b>đầu mũi tên của từng đèn</b> để xoay hướng chiếu đèn đó — kết quả tính lại ngay. Bấm <b>⬇️ Tải file kết quả</b> để lưu vị trí đã chỉnh cùng kết quả và lưới độ rọi; <b>📑 Xuất PDF</b> để ra báo cáo.</li>
       <li><b>Yêu cầu</b> chọn theo <b>TCVN 13608:2023</b> (Bảng 4 đường đi bộ, Bảng 6 bãi đỗ xe, Bảng 7 công viên/vườn hoa, Bảng 12–15 sân thể thao, bể bơi) hoặc <b>EN 12193</b> cấp I–III; sửa được ngưỡng Eav/Uo. Kết quả: Eav, Emin, Emax, Uo = Emin/Eav, Ud = Emin/Emax, công suất, W/m².</li>
@@ -725,6 +727,7 @@ async function saveXlsxBuffer(out, name){
   const a=Object.assign(document.createElement("a"),{href:URL.createObjectURL(blob),download:name});
   document.body.appendChild(a); a.click(); a.remove(); return true;
 }
+$("mTemplateArch").onclick = async () => { $("menu").hidden = true; try{ await AREA.downloadTemplate("mythuat"); }catch(e){ setStatus("Lỗi tạo Excel mẫu mỹ thuật: "+e.message,true); } };
 $("mTemplatePark").onclick = async () => { $("menu").hidden = true; try{ await AREA.downloadTemplate("congvien"); }catch(e){ setStatus("Lỗi tạo Excel mẫu công viên: "+e.message,true); } };
 $("mTemplateArea").onclick = async () => { $("menu").hidden = true; try{ await AREA.downloadTemplate(); }catch(e){ setStatus("Lỗi tạo Excel mẫu khu vực: "+e.message,true); } };
 $("mTemplate").onclick = async () => {
