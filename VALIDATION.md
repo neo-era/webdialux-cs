@@ -55,3 +55,11 @@ Bộ test đối chiếu DIALux: `test/engine.test.mjs`. Dữ liệu 14 ca: `dat
 | Độc Lập | 1,67/1,67 | 0,54/0,54 | 0,72/0,73 | 11/11 | 0,67/0,67 | khớp |
 
 Quy ước DIALux rút ra: lưới 3 điểm ngang/làn; REI từng mép, dải = bề rộng làn; W/km = round(1000/S); TI ở trạng thái ban đầu, observer dời. Còn lại: Ul tuyến 1 bên cao 9 m lệch +0,01…0,02.
+
+## Chế độ Cầu (v3.2) — kiểm chứng `test/v32.test.mjs`
+- **Cầu phẳng = chế độ Đường**: 4 bố trí (1 bên, đối xứng, so le, giữa) — Ltb, Uo, Ul, TI, SR, Eav từng ô trùng `calcRoad` (sai số tương đối < 1e-9). Cầu Bình Triệu 2 phẳng: Ltb 1,38 · Uo 0,75 · Ul 0,90 · TI 9 như DIALux.
+- **Trắc dọc**: cao độ 0 tại hai mố, đỉnh = i·(L/2 − R·i) + R·i²/2, chiều dài cong 2·R·i, liên tục tại tiếp điểm, đúng dấu độ dốc.
+- **Mặt dốc**: E và L theo pháp tuyến mặt cầu đã đối chiếu độc lập bằng cách xoay hệ toạ độ cho mặt cầu nằm ngang (dốc 6 %: E 16,33428 lx, L 0,82637 cd/m² trùng tới 1e-15). Dốc → 0 hội tụ về cầu phẳng (< 0,1 %). Các ô đối xứng qua đỉnh có độ rọi bằng nhau (< 0,3 %, do cửa sổ đèn −5…+6 khoảng cột như chế độ Đường).
+- **Tia sát mặt dốc**: ngoài bảng R3 (tanε > 12) trên mặt dốc ngoại suy r ∝ (12/tanε)³ (cầu phẳng giữ cột cuối như chế độ Đường để trùng DIALux); tia đèn → điểm và đèn → mắt bị đỉnh cầu che không tính. Kiểm: Ltb/Ul các ô liền nhau thay đổi < 10 %.
+- **Tầm nhìn qua đỉnh**: mắt 1,5 m thấy xa √(2·R·1,5); nhỏ hơn 60 m + khoảng cột → cảnh báo và cột "khuất" (% điểm lưới người quan sát không thấy) trong bảng ô, Excel, PDF — các ô đó tham khảo.
+- **Dữ liệu xấu**: thiếu chiều dài / lòng đường / khoảng cách trụ / H, khoảng cách trụ < 8 m, dốc > 10 %, số làn > 16, đèn/trụ > 8, trụ đầu ngoài cầu → lỗi rõ ràng, không tính; đường cong đứng dài hơn cầu, đỉnh gãy, đèn thấp ngang lan can, cấp đường sai → cảnh báo.

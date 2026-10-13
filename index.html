@@ -163,8 +163,10 @@ label.opt.wide{grid-column:1/-1}
 #tbl td[data-k=reason]{order:6;flex-basis:100%;margin-top:4px;font-size:12.5px}
 .guide{padding:16px}
 }
-body.area .road-only{display:none!important}
+body.area .road-only,body.bridge .road-only{display:none!important}
 body:not(.area) .area-only{display:none!important}
+body:not(.bridge) .bridge-only{display:none!important}
+body.area .not-area{display:none!important}
 </style>
 
 <div class="upd" id="updBar" hidden role="status">Có bản mới của WebDialux-CS. <button class="primary" id="updBtn">Tải lại</button></div>
@@ -173,14 +175,14 @@ body:not(.area) .area-only{display:none!important}
     <div class="brand">
       <b>WebDialux-CS <span class="ver" id="verBadge">v1.2</span></b>
       <span id="brandSub">Mô phỏng chiếu sáng đường theo QCVN 07-7:2023 · bảng R3 CIE</span>
-      <div class="seg" role="tablist" aria-label="Chế độ tính"><button id="segRoad" class="on" role="tab" aria-selected="true">Đường</button><button id="segArea" role="tab" aria-selected="false">Khu vực tự do</button></div>
+      <div class="seg" role="tablist" aria-label="Chế độ tính"><button id="segRoad" class="on" role="tab" aria-selected="true">Đường</button><button id="segArea" role="tab" aria-selected="false">Khu vực tự do</button><button id="segBridge" role="tab" aria-selected="false">Cầu</button></div>
     </div>
     <div class="controls">
       <div class="dock" role="toolbar" aria-label="Thao tác chính">
       <button id="btnXlsx"><i aria-hidden="true">📄</i><span class="long">Chọn file Excel</span><span class="short">Excel</span></button>
       <button id="btnIes"><i aria-hidden="true">📁</i><span class="long">Chọn thư mục IES</span><span class="short">IES</span></button>
       <label class="opt">MF <input type="number" id="mf" value="0.8" step="0.05" min="0.3" max="1"></label>
-      <label class="opt road-only">Mặt đường (q0)
+      <label class="opt not-area">Mặt đường (q0)
         <select id="q0" title="Hệ số độ chói trung bình q0 của mặt đường (CIE R3). 0,08 = Tarmac theo DIALux.">
           <option value="0.10">R3 · q0 0,10 (rất sáng)</option>
           <option value="0.09">R3 · q0 0,09</option>
@@ -205,6 +207,7 @@ body:not(.area) .area-only{display:none!important}
           <button class="menu-item" id="mTemplateArea" role="menuitem">⬇ Tải Excel mẫu khu vực</button>
           <button class="menu-item" id="mTemplatePark" role="menuitem">⬇ Tải Excel mẫu công viên</button>
           <button class="menu-item" id="mTemplateArch" role="menuitem">⬇ Tải Excel mẫu chiếu sáng mỹ thuật</button>
+          <button class="menu-item" id="mTemplateBridge" role="menuitem">⬇ Tải Excel mẫu cầu</button>
           <button class="menu-item" id="mInstall" role="menuitem" hidden>📲 Cài đặt ứng dụng</button>
           <div class="menu-item menu-hint" id="mIosHint" hidden>📲 Cài trên iPhone/iPad: mở bằng <b>Safari</b>, bấm <b>Chia sẻ</b> ⬆ → <b>Thêm vào MH chính</b></div>
         </div>
@@ -215,6 +218,7 @@ body:not(.area) .area-only{display:none!important}
 
   <div class="status" id="status">Chọn file Excel dữ liệu tuyến và thư mục chứa file .ies để bắt đầu. Mọi tính toán chạy local trên máy — dữ liệu Excel/IES không gửi lên mạng.</div>
   <section id="areaView" class="area-only" aria-label="Chế độ khu vực tự do"></section>
+  <section id="bridgeView" class="bridge-only" aria-label="Chế độ cầu"></section>
 
   <div class="road-only kpis" id="kpis" hidden>
     <div class="kpi"><div class="n" id="kTong">0</div><div class="l">Dòng</div></div>
@@ -327,6 +331,15 @@ body:not(.area) .area-only{display:none!important}
       <li>Chỉ tính <b>độ rọi ngang</b>; độ rọi đứng (bể bơi, truyền hình) và chói loá GR chưa tính. File IES phải là trắc quang <b>loại C</b> (đèn đường, đa số đèn pha LED).</li>
     </ul>
 
+    <h3>6c. Chế độ "Cầu" — chiếu sáng mặt cầu giao thông</h3>
+    <ul>
+      <li>Bấm nút <b>Cầu</b> dưới tên app, hoặc mở file Excel có sheet <code>DU LIEU CAU</code> (☰ Menu → <b>Tải Excel mẫu cầu</b>). Mỗi dòng một cầu; chọn cầu ở ô trên cùng bên trái, <b>＋</b> thêm, <b>⧉</b> nhân bản, <b>✕</b> xoá.</li>
+      <li><b>Mặt cắt ngang</b>: lòng đường (tổng các làn), số làn, lề bộ hành mỗi bên, dải phân cách, gờ chắn, chiều cao lan can. <b>Vị trí trụ</b>: trên lan can ngoài (trụ → mép lòng đường = lề + gờ), trên gờ chắn (= ½ gờ), hoặc trên dải phân cách (bố trí giữa, cần đôi); nhập tay <i>Trụ → mép lòng đường</i> để ghi đè.</li>
+      <li><b>Trắc dọc</b>: hai đoạn dốc đối xứng (%) lên tới đỉnh ở giữa cầu, nối bằng <b>đường cong đứng</b> bán kính R (dài 2·R·i); trống R = đỉnh gãy. Trụ thẳng đứng nên cao độ đèn bám mặt cầu; độ rọi, độ chói tính theo <b>pháp tuyến mặt cầu</b> tại từng điểm; người quan sát (60 m, cao 1,5 m) và hướng nhìn khi tính TI bám mặt cầu.</li>
+      <li><b>Lòng đường</b> tính trên từng khoảng cột dọc cầu (ô), lấy ô xấu nhất: Ltb, Uo, Ul, TI, SR theo QCVN 07-7:2023. <b>Lề bộ hành</b>: Eav, Uo trên toàn chiều dài theo TCVN 13608:2023 Bảng 4. Không có lề bộ hành → không xét SR. Cầu dốc 0 % cho kết quả trùng chế độ Đường.</li>
+      <li><b>Bộ đèn</b>: chọn file IES hoặc để <i>Tự chọn</i> — app thử các bộ theo công suất tăng dần, lấy bộ nhỏ nhất vẫn Đạt. Xem <b>Mặt bằng</b> (độ rọi, khung vàng = ô Ltb thấp nhất), <b>Phối cảnh 3D</b> (kéo xoay, lăn phóng to), <b>Trắc dọc</b> có cột Ltb từng ô. <b>⬇️ Tải file kết quả</b>: sheet DU LIEU CAU (đã sửa), KET QUA CAU, O TINH DOC CAU; <b>📑 Xuất PDF</b>: 3 trang/cầu.</li>
+    </ul>
+
     <h3>7. Lưu ý</h3>
     <ul>
       <li>Trong khung xem trước có thể bị chặn tải — mở app ở <code>neo-era.github.io/webdialux-cs/</code> hoặc local là tải mượt.</li>
@@ -359,6 +372,7 @@ import { makeIntensity } from "./src/ies.mjs";
 import { VERSION } from "./src/version.mjs";
 import { buildPdfParts, partSubject, PDF_PER_FILE } from "./src/pdfparts.mjs";
 import { initAreaUI } from "./src/areaui.mjs";
+import { initBridgeUI } from "./src/bridgeui.mjs";
 document.getElementById("verBadge").textContent = VERSION;
 document.getElementById("verMenu").textContent = "WebDialux-CS " + VERSION;
 
@@ -379,20 +393,37 @@ const AREA = initAreaUI({
     const jsPDF = window.jspdf && window.jspdf.jsPDF; if (!jsPDF) throw new Error("chưa tải được jsPDF");
     return { jsPDF, makeDoc: rep.makeDoc, finalizeDoc: rep.finalizeDoc, font: f.default }; },
 });
-function setMode(area){
-  areaMode = !!area; document.body.classList.toggle("area", areaMode);
-  $("brandSub").textContent = areaMode ? "Chiếu sáng khu vực tự do (sân thể thao, công viên, bãi đỗ xe) · TCVN 13608:2023 / EN 12193" : "Mô phỏng chiếu sáng đường theo QCVN 07-7:2023 · bảng R3 CIE";
-  $("segRoad").classList.toggle("on", !areaMode); $("segArea").classList.toggle("on", areaMode);
-  $("segRoad").setAttribute("aria-selected", String(!areaMode)); $("segArea").setAttribute("aria-selected", String(areaMode));
+// chế độ: "road" | "area" | "bridge" (giữ tương thích setMode(true/false) = khu vực / đường)
+let bridgeMode = false;
+const BRIDGE = initBridgeUI({
+  root: $("bridgeView"), setStatus, getIes: () => iesIndex,
+  getMF: () => parseFloat($("mf").value) || 0.8, getQ0: () => parseFloat($("q0").value) || 0.08,
+  saveXlsxBuffer: (b, n) => saveXlsxBuffer(b, n), outName: (k, s, e) => outName(k, s, e),
+  getPdfTools: async () => { const [rep, f] = await Promise.all([import("./src/report.mjs"), import("./src/font.mjs")]);
+    const jsPDF = window.jspdf && window.jspdf.jsPDF; if (!jsPDF) throw new Error("chưa tải được jsPDF");
+    return { jsPDF, makeDoc: rep.makeDoc, finalizeDoc: rep.finalizeDoc, font: f.default }; },
+});
+const SUB = { road: "Mô phỏng chiếu sáng đường theo QCVN 07-7:2023 · bảng R3 CIE",
+  area: "Chiếu sáng khu vực tự do (sân thể thao, công viên, bãi đỗ xe) · TCVN 13608:2023 / EN 12193",
+  bridge: "Chiếu sáng mặt cầu giao thông — dốc dọc, đường cong đứng, lề bộ hành · QCVN 07-7:2023 / TCVN 13608:2023" };
+function setMode(m){
+  const mode = m === true ? "area" : (m === "area" || m === "bridge") ? m : "road";
+  areaMode = mode === "area"; bridgeMode = mode === "bridge";
+  document.body.classList.toggle("area", areaMode); document.body.classList.toggle("bridge", bridgeMode);
+  $("brandSub").textContent = SUB[mode];
+  for (const [id, on] of [["segRoad", mode === "road"], ["segArea", areaMode], ["segBridge", bridgeMode]]) { $(id).classList.toggle("on", on); $(id).setAttribute("aria-selected", String(on)); }
   if (areaMode) { $("btnSave").disabled = false; $("btnPdf").disabled = false; AREA.render(); }
+  else if (bridgeMode) { $("btnSave").disabled = false; $("btnPdf").disabled = false; BRIDGE.render(); }
   else { $("btnSave").disabled = !results; $("btnPdf").disabled = !results; }
 }
 // móc kiểm thử tự động (E2E): nạp IES/Excel không qua hộp thoại chọn file
-window.__webdialux = { area: AREA, setMode, loadIes: (files) => { iesFiles = files; finishIes(); },
+window.__webdialux = { area: AREA, bridge: BRIDGE, setMode, loadIes: (files) => { iesFiles = files; finishIes(); },
   loadXlsx: (buf, name) => { xlsxBuf = buf; loadWb(name); } };
-$("segRoad").onclick = () => setMode(false);
-$("segArea").onclick = () => setMode(true);
-$("mf").addEventListener("change", () => { if (areaMode) AREA.recalc(); });
+$("segRoad").onclick = () => setMode("road");
+$("segArea").onclick = () => setMode("area");
+$("segBridge").onclick = () => setMode("bridge");
+$("mf").addEventListener("change", () => { if (areaMode) AREA.recalc(); if (bridgeMode) BRIDGE.recalc(); });
+$("q0").addEventListener("change", () => { if (bridgeMode) BRIDGE.recalc(); });
 function fmt(x,d=2){ return (x==null||!isFinite(x))?"—":Number(x).toFixed(d); }
 
 // ---- Chọn Excel ----
@@ -412,8 +443,9 @@ function loadWb(name){
   try{
     const w = XLSX.read(xlsxBuf,{type:"array"});
     // file khu vực: không đụng dữ liệu tuyến đường (wb, rows, results) đang có
-    if (w.SheetNames.includes("VI TRI TRU")) { setMode(true); AREA.loadWorkbook(w, (name||"").replace(/\.(xlsx|xlsm)$/i,"")); return; }
-    if (areaMode) setMode(false);
+    if (w.SheetNames.includes("VI TRI TRU")) { setMode("area"); AREA.loadWorkbook(w, (name||"").replace(/\.(xlsx|xlsm)$/i,"")); return; }
+    if (w.SheetNames.includes("DU LIEU CAU")) { setMode("bridge"); BRIDGE.loadWorkbook(w, (name||"").replace(/\.(xlsx|xlsm)$/i,"")); return; }
+    if (areaMode || bridgeMode) setMode("road");
     xlsxName = name || ""; wb = w;
     sheetName = wb.SheetNames.includes("DU LIEU TUYEN") ? "DU LIEU TUYEN" : wb.SheetNames[0];
     rows = XLSX.utils.sheet_to_json(wb.Sheets[sheetName],{defval:null});
@@ -449,7 +481,7 @@ function finishIes(){
   const models=[...new Set(iesIndex.map(e=>e.model).filter(Boolean))];
   setStatus(`IES: ${iesFiles.length} file (${iesIndex.length} hợp lệ) · model: ${models.join(", ")||"?"}. ${rows?"Sẵn sàng chạy.":"Giờ chọn file Excel."}`);
   maybeEnableRun();
-  AREA.onIes();
+  AREA.onIes(); BRIDGE.onIes();
 }
 function maybeEnableRun(){ $("btnRun").disabled = !(rows && iesIndex.length); }
 
@@ -683,6 +715,7 @@ async function saveRanked(){
 
 $("btnSave").onclick = async () => {
   if(areaMode){ try{ await AREA.saveExcel(); }catch(e){ setStatus("Lỗi xuất Excel khu vực: "+e.message,true); } return; }
+  if(bridgeMode){ try{ await BRIDGE.saveExcel(); }catch(e){ setStatus("Lỗi xuất Excel cầu: "+e.message,true); } return; }
   if(!results){ return; }
   if(isRanked()){ await saveRanked(); return; }
   // Chế độ TỪNG PHƯƠNG ÁN: cũng xuất workbook 3 sheet (ExcelJS) như chế độ chấm điểm — luôn là FILE MỚI, không ghi lên file gốc
@@ -724,6 +757,7 @@ $("btnSave").onclick = async () => {
 // ---- Xuất PDF kiểu DIALux (các tuyến đang lọc, mỗi tuyến vài trang; chia nhiều file) ----
 $("btnPdf").onclick = async () => {
   if(areaMode){ try{ await AREA.exportPdf(); }catch(e){ setStatus("Lỗi xuất PDF khu vực: "+e.message,true); } return; }
+  if(bridgeMode){ try{ setStatus("Đang tạo PDF cầu…"); await BRIDGE.exportPdf(); }catch(e){ setStatus("Lỗi xuất PDF cầu: "+e.message,true); } return; }
   if(!results) return;
   const idxs = visibleIndices().filter(i=>results[i].status==="ok");
   if(idxs.length===0){ setStatus("Không có tuyến tính được (theo bộ lọc) để xuất PDF.",true); return; }
@@ -823,6 +857,7 @@ async function saveXlsxBuffer(out, name){
   const a=Object.assign(document.createElement("a"),{href:URL.createObjectURL(blob),download:name});
   document.body.appendChild(a); a.click(); a.remove(); return true;
 }
+$("mTemplateBridge").onclick = async () => { $("menu").hidden = true; try{ await BRIDGE.downloadTemplate(); }catch(e){ setStatus("Lỗi tạo Excel mẫu cầu: "+e.message,true); } };
 $("mTemplateArch").onclick = async () => { $("menu").hidden = true; try{ await AREA.downloadTemplate("mythuat"); }catch(e){ setStatus("Lỗi tạo Excel mẫu mỹ thuật: "+e.message,true); } };
 $("mTemplatePark").onclick = async () => { $("menu").hidden = true; try{ await AREA.downloadTemplate("congvien"); }catch(e){ setStatus("Lỗi tạo Excel mẫu công viên: "+e.message,true); } };
 $("mTemplateArea").onclick = async () => { $("menu").hidden = true; try{ await AREA.downloadTemplate(); }catch(e){ setStatus("Lỗi tạo Excel mẫu khu vực: "+e.message,true); } };
