@@ -47,6 +47,20 @@ export function drawAreaPlan(ctx, Wpx, Hpx, { poles, areas, result = null, objec
   const C = opts.colors || { bg: "#ffffff", line: "#d8dee8", fg: "#1c2430", muted: "#5b6676", pole: "#1c2430", sel: "#f59e0b" };
   ctx.save();
   ctx.fillStyle = C.bg; ctx.fillRect(0, 0, Wpx, Hpx);
+  // opts.declutter (màn hình): nhãn chồng lên nhãn đã đặt thì bỏ. Tên trụ được ưu tiên đặt trước (trụ đang chọn luôn hiện),
+  // tên vùng/vật thể chỉ hiện nếu còn chỗ. PDF không bật declutter → vẽ đủ mọi nhãn như trước.
+  const placed = [];
+  const fits = (x, y, w, h, force) => {
+    if (!opts.declutter) return true;
+    const hit = placed.some((r) => x < r[0] + r[2] && r[0] < x + w && y < r[1] + r[3] && r[1] < y + h);
+    if (hit && !force) return false; placed.push([x, y, w, h]); return true;
+  };
+  ctx.font = `bold ${11.5 * k}px sans-serif`;
+  const poleShow = new Set();
+  for (const p of [...poles].sort((a, b) => (b.id === opts.sel) - (a.id === opts.sel))) {
+    const [px, py] = S(p.x, p.y), w = ctx.measureText(String(p.id)).width + 4 * k;
+    if (fits(px - w / 2, py - 21.5 * k, w, 13 * k, p.id === opts.sel)) poleShow.add(p);
+  }
   // lưới 5 m
   if (opts.grid !== false) {
     ctx.strokeStyle = C.line; ctx.lineWidth = 0.6 * k;
@@ -79,6 +93,7 @@ export function drawAreaPlan(ctx, Wpx, Hpx, { poles, areas, result = null, objec
       const [sx, sy] = S(tx, ty);
       ctx.font = `600 ${12 * k}px sans-serif`; ctx.textAlign = "left";
       const label = a.name || `Vùng ${n + 1}`, w = ctx.measureText(label).width;
+      if (!fits(sx + 4 * k, sy + 4 * k, w + 8 * k, 17 * k)) return;
       ctx.fillStyle = "rgba(255,255,255,.82)"; ctx.fillRect(sx + 4 * k, sy + 4 * k, w + 8 * k, 17 * k);
       ctx.fillStyle = "#1c2430"; ctx.fillText(label, sx + 8 * k, sy + 17 * k);
     }
@@ -104,8 +119,8 @@ export function drawAreaPlan(ctx, Wpx, Hpx, { poles, areas, result = null, objec
     }
     if (opts.labels !== false) { const [cx, cy] = o.pts.reduce((a, p) => [a[0] + p[0] / o.pts.length, a[1] + p[1] / o.pts.length], [0, 0]), [sx, sy] = S(cx, cy);
       ctx.font = `bold ${10.5 * k}px sans-serif`; ctx.textAlign = "center"; const w = ctx.measureText(o.id).width;
-      ctx.fillStyle = "rgba(255,255,255,0.85)"; ctx.fillRect(sx - w / 2 - 3 * k, sy - 10 * k - (o.type === "tree" ? 0 : 4 * k), w + 6 * k, 13 * k);
-      ctx.fillStyle = "#1c2430"; ctx.fillText(o.id, sx, sy - (o.type === "tree" ? 0 : 4 * k)); }
+      if (fits(sx - w / 2 - 3 * k, sy - 10 * k - (o.type === "tree" ? 0 : 4 * k), w + 6 * k, 13 * k, o.id === opts.selObj)) { ctx.fillStyle = "rgba(255,255,255,0.85)"; ctx.fillRect(sx - w / 2 - 3 * k, sy - 10 * k - (o.type === "tree" ? 0 : 4 * k), w + 6 * k, 13 * k);
+      ctx.fillStyle = "#1c2430"; ctx.fillText(o.id, sx, sy - (o.type === "tree" ? 0 : 4 * k)); } }
   }
   if (opts.draft && opts.draft.pts.length) {
     const d = opts.draft; ctx.setLineDash([6 * k, 4 * k]); ctx.strokeStyle = "#f59e0b"; ctx.lineWidth = 2 * k;
@@ -114,6 +129,7 @@ export function drawAreaPlan(ctx, Wpx, Hpx, { poles, areas, result = null, objec
     ctx.fillStyle = "#f59e0b"; for (const [x, y] of d.pts) { const [sx, sy] = S(x, y); ctx.beginPath(); ctx.arc(sx, sy, 3.5 * k, 0, 2 * Math.PI); ctx.fill(); }
   }
   // trụ + hướng chiếu từng đèn (đoạn dài ∝ H·tan(nghiêng), tối thiểu 3 m); đèn chọn tô đậm
+  const poleLabels = [];
   for (const p of poles) {
     const sel = p.id === opts.sel, L = poleLamps(p);
     const [px, py] = S(p.x, p.y);
@@ -129,9 +145,11 @@ export function drawAreaPlan(ctx, Wpx, Hpx, { poles, areas, result = null, objec
     const missing = !L.length || L.some((l) => !l.ies);
     ctx.fillStyle = sel ? C.sel : (missing ? "#c0392b" : C.pole); ctx.strokeStyle = "#ffffff"; ctx.lineWidth = 2 * k;
     ctx.beginPath(); ctx.arc(px, py, (sel ? 8 : 6.5) * k, 0, 2 * Math.PI); ctx.fill(); ctx.stroke();
-    ctx.fillStyle = C.fg; ctx.font = `bold ${11.5 * k}px sans-serif`; ctx.textAlign = "center";
-    ctx.fillText(p.id, px, py - 11 * k);
+    poleLabels.push({ id: p.id, px, py });
   }
+  // tên trụ (đã chọn chỗ ở đầu hàm)
+  ctx.fillStyle = C.fg; ctx.font = `bold ${11.5 * k}px sans-serif`; ctx.textAlign = "center";
+  for (const { id, px, py } of poleLabels) if (poleShow.has(poles.find((p) => p.id === id))) ctx.fillText(id, px, py - 11 * k);
   // thước tỉ lệ
   const bar = [1, 2, 5, 10, 20, 50, 100].find((v) => v * sc > 60 * k) || 100;
   const [bx, by] = [m * 0.6, Hpx - 12 * k];

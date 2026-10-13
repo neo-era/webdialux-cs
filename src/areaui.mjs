@@ -73,6 +73,22 @@ body.area .wrap{max-width:min(1680px,100%)}
 #areaView .compass{flex:none}
 #areaView .sumies{font-size:11.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:220px}
 @media (max-width:620px){#areaView .lamp .g4{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media (max-width:640px){
+#areaView{padding:8px 0}
+#areaView .subtabs,#areaView .vtabs{display:flex;width:100%}
+#areaView .subtabs button,#areaView .vtabs button{flex:1;justify-content:center;min-height:44px;padding:6px 4px;font-size:13px}
+#areaView .tabs button,#areaView .tools button,#areaView .detail .acts button{min-height:44px}
+#areaView .detail .acts select{min-height:44px;max-width:100%!important}
+#areaView td input,#areaView td select{min-height:40px}
+#areaView .lamp{grid-template-columns:26px minmax(0,1fr) 44px}
+#areaView .lamp input,#areaView .lamp select{min-height:44px}
+#areaView .del{min-width:44px;min-height:44px;font-size:16px}
+#areaView .tw::before{content:"← vuốt ngang để xem thêm cột →";position:sticky;left:0;display:block;padding:5px 8px;font-size:11px;color:var(--muted);background:var(--surface-2);border-bottom:1px solid var(--line)}
+#areaView .tw td:first-child,#areaView .tw th:first-child{position:sticky;left:0;background:var(--surface);z-index:1;box-shadow:1px 0 0 var(--line)}
+#areaView .tw th:first-child{background:var(--surface-2);z-index:3}
+#areaView .tw th{top:0}
+#areaView .legend .bar{width:110px}
+}
 `;
 
 const N = (v) => { if (v === "" || v == null) return null; const n = parseFloat(String(v).replace(",", ".")); return Number.isFinite(n) ? n : null; };
@@ -235,7 +251,7 @@ export function initAreaUI({ root, setStatus, getIes: getIesAll, getMF, saveXlsx
   function render(opts = {}) {
     if (!st.poles.length && !st.areas.length && !st.objects.length) {
       root.innerHTML = `<div class="card empty"><h3 style="margin-bottom:8px">Chế độ khu vực tự do — sân thể thao, công viên, quảng trường, bãi đỗ xe</h3>
-        <p>Chọn file Excel có sheet <b>VI TRI TRU</b> và <b>VUNG TINH</b> (☰ Menu → <i>Tải Excel mẫu khu vực</i>), hoặc bắt đầu từ sân mẫu rồi sửa trực tiếp.</p>
+        <p>Chọn file Excel có sheet <b>VI TRI TRU</b> và <b>VUNG TINH</b> (☰ Menu — điện thoại: ☰ Thêm → <i>Tải Excel mẫu khu vực</i>), hoặc bắt đầu từ sân mẫu rồi sửa trực tiếp.</p>
         <div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap">${Object.entries(SAMPLES).map(([k, S], i) => `<button data-sample="${k}"${i ? "" : ' class="primary"'}>${esc(S.label)}</button>`).join("")}</div></div>`;
       root.querySelectorAll("[data-sample]").forEach((b) => b.onclick = () => loadSample(b.dataset.sample));
       return;
@@ -413,7 +429,7 @@ export function initAreaUI({ root, setStatus, getIes: getIesAll, getMF, saveXlsx
     } else if (st.facade) {
       const vf = drawFacades(cv.getContext("2d"), cv.width, cv.height, st.arch, { objId: st.selObj, px: dpr, colors: colors() });
       view = { range: vf.range, facade: true };
-    } else view = drawAreaPlan(cv.getContext("2d"), cv.width, cv.height, st, { sel: st.sel, selLamp: st.selLamp, selObj: st.selObj, draft: st.draft, colors: colors(), px: dpr, bounds: dragBounds });
+    } else view = drawAreaPlan(cv.getContext("2d"), cv.width, cv.height, st, { declutter: true, sel: st.sel, selLamp: st.selLamp, selObj: st.selObj, draft: st.draft, colors: colors(), px: dpr, bounds: dragBounds });
     const lg = root.querySelector("#avLegend");
     if (lg && (st.result || (st.facade && st.arch))) {
       const [lo, hi] = view.range, grad = view.three ? rampCss() : [0, .25, .5, .75, 1].map((t) => `rgb(${heatColor(t).join(",")}) ${t * 100}%`).join(",");

@@ -104,6 +104,65 @@ a{color:var(--accent)}
 .seg{display:inline-flex;border:1px solid var(--line);border-radius:8px;overflow:hidden;margin-top:4px;width:max-content}
 .seg button{border:none;border-radius:0;background:var(--surface);color:var(--muted);padding:5px 12px;font-size:12.5px}
 .seg button.on{background:var(--accent);color:var(--accent-ink);font-weight:600}
+/* ---- thanh hành động: máy tính = nằm trong thanh công cụ như cũ; điện thoại = cố định dưới đáy ---- */
+.dock{display:contents}
+.dock i{font-style:normal}
+.short,.only-mobile{display:none}
+@media (max-width:640px){
+body{padding-bottom:calc(76px + env(safe-area-inset-bottom))}
+.wrap{padding-block:10px 14px;padding-inline:max(12px,env(safe-area-inset-left)) max(12px,env(safe-area-inset-right))}
+header.bar{gap:10px;padding-bottom:10px}
+.brand{width:100%}
+.brand span#brandSub{font-size:12px}
+.seg{display:flex;width:100%;margin-top:8px;border-radius:10px}
+.seg button{flex:1;justify-content:center;min-height:44px;font-size:14px}
+button,select,input[type=number],input[type=search]{min-height:44px}
+input,select{font-size:16px!important}
+.controls{width:100%;display:grid;grid-template-columns:110px minmax(0,1fr);gap:8px}
+label.opt{min-width:0;font-size:12px;flex-direction:column;align-items:stretch;gap:3px}
+label.opt select{flex:1;min-width:0;width:100%}
+label.opt input[type=number]{flex:1;min-width:0;width:100%}
+label.opt.wide{grid-column:1/-1}
+.dock{position:fixed;left:0;right:0;bottom:0;z-index:45;display:grid;grid-auto-flow:column;grid-auto-columns:minmax(0,1fr);gap:4px;padding:6px max(6px,env(safe-area-inset-right)) calc(6px + env(safe-area-inset-bottom)) max(6px,env(safe-area-inset-left));background:var(--surface);border-top:1px solid var(--line);box-shadow:0 -6px 22px rgba(0,0,0,.14)}
+.dock>button,.dock .menu-wrap>button{flex-direction:column;justify-content:center;gap:2px;width:100%;min-height:54px;padding:4px 2px;border:none;border-radius:14px;background:none;color:var(--muted);font-size:11.5px;font-weight:500}
+.dock>button i,.dock .menu-wrap>button i{font-size:19px;line-height:1}
+.dock #btnRun{background:var(--accent);color:var(--accent-ink);font-size:13.5px;font-weight:600;white-space:nowrap;overflow:hidden;flex-direction:row;gap:5px}
+.dock #btnRun .spin{flex:none}
+.dock .long,.no-mobile{display:none}
+.dock .short{display:inline}
+.menu-wrap{display:block}
+.menu{position:fixed;left:0;right:0;bottom:0;top:auto;min-width:0;max-height:82vh;overflow:auto;border-radius:18px 18px 0 0;padding-bottom:env(safe-area-inset-bottom);z-index:70;box-shadow:0 0 0 100vmax rgba(8,12,18,.55),0 -10px 40px rgba(0,0,0,.3)}
+.menu-sep{padding:12px 18px 8px;text-align:center}
+.menu-item{min-height:52px;padding:13px 18px;font-size:15px}
+.menu-item.only-mobile{display:block}
+.upd{bottom:calc(80px + env(safe-area-inset-bottom))}
+.kpis{grid-template-columns:repeat(5,minmax(0,1fr));gap:6px;margin:10px 0}
+.kpi{padding:8px 6px;border-radius:10px}
+.kpi .n{font-size:18px}
+.kpi .l{font-size:9.5px;letter-spacing:0;margin-top:4px;line-height:1.25}
+.filters select{flex:0 0 auto}
+/* bảng kết quả đường → thẻ */
+#tablewrap{overflow:visible;border:none;background:none;border-radius:0}
+#tbl thead{display:none}
+#tbl,#tbl tbody{display:block}
+#tbl tr{display:flex;flex-wrap:wrap;align-items:baseline;gap:0 6px;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:10px 12px;margin-bottom:8px}
+#tbl tr.cont{margin:-4px 0 8px 14px;border-style:dashed}
+#tbl tr.chosen{background:var(--ok-bg);border-color:var(--ok)}
+#tbl tr.chosen td{background:none}
+#tbl td{display:block;border:none;padding:0;text-align:left;white-space:normal;min-width:0}
+#tbl td:empty{display:none}
+#tbl tr::before{content:"";order:3;flex-basis:100%}
+#tbl tr::after{content:"";order:5;flex-basis:100%}
+#tbl td[data-k=stt]{order:0;font-weight:600}
+#tbl td[data-k=tuyen]{order:1;flex:1;font-weight:600}
+#tbl td[data-k=kq]{order:2}
+#tbl td[data-k=cap],#tbl td[data-k=den],#tbl td[data-k=hang],#tbl td[data-k=cs]{order:4;font-size:12px;color:var(--muted);margin-top:3px}
+#tbl td[data-k=cs]::after{content:" W"}
+#tbl td.m{order:6;flex:1 1 0;min-width:34px;margin-top:8px;font-size:14px}
+#tbl td.m::before{content:attr(data-l);display:block;font:11px var(--sans);color:var(--muted);text-transform:none}
+#tbl td[data-k=reason]{order:6;flex-basis:100%;margin-top:4px;font-size:12.5px}
+.guide{padding:16px}
+}
 body.area .road-only{display:none!important}
 body:not(.area) .area-only{display:none!important}
 </style>
@@ -117,8 +176,9 @@ body:not(.area) .area-only{display:none!important}
       <div class="seg" role="tablist" aria-label="Chế độ tính"><button id="segRoad" class="on" role="tab" aria-selected="true">Đường</button><button id="segArea" role="tab" aria-selected="false">Khu vực tự do</button></div>
     </div>
     <div class="controls">
-      <button id="btnXlsx">📄 Chọn file Excel</button>
-      <button id="btnIes">📁 Chọn thư mục IES</button>
+      <div class="dock" role="toolbar" aria-label="Thao tác chính">
+      <button id="btnXlsx"><i aria-hidden="true">📄</i><span class="long">Chọn file Excel</span><span class="short">Excel</span></button>
+      <button id="btnIes"><i aria-hidden="true">📁</i><span class="long">Chọn thư mục IES</span><span class="short">IES</span></button>
       <label class="opt">MF <input type="number" id="mf" value="0.8" step="0.05" min="0.3" max="1"></label>
       <label class="opt road-only">Mặt đường (q0)
         <select id="q0" title="Hệ số độ chói trung bình q0 của mặt đường (CIE R3). 0,08 = Tarmac theo DIALux.">
@@ -129,16 +189,17 @@ body:not(.area) .area-only{display:none!important}
           <option value="0.06">R3 · q0 0,06</option>
           <option value="0.05">R3 · q0 0,05 (tối)</option>
         </select></label>
-      <label class="opt road-only">Chế độ
+      <label class="opt road-only wide">Chế độ
         <select id="mode"><option value="rank">Đa phương án (chấm điểm &amp; chọn tối ưu)</option><option value="each">Từng phương án (1 đèn/dòng)</option></select>
       </label>
       <button id="btnRun" class="primary road-only" disabled>▶ Chạy</button>
-      <button id="btnSave" disabled title="Tải xuống file kết quả mới (.xlsx) — không ghi lên file Excel gốc">⬇️ Tải file kết quả</button>
-      <button id="btnPdf" disabled>📑 Xuất PDF</button>
+      <button id="btnSave" disabled title="Tải xuống file kết quả mới (.xlsx) — không ghi lên file Excel gốc"><i aria-hidden="true">⬇️</i><span class="long">Tải file kết quả</span><span class="short">Kết quả</span></button>
+      <button id="btnPdf" class="no-mobile" disabled>📑 Xuất PDF</button>
       <div class="menu-wrap">
-        <button id="btnMenu" aria-haspopup="true">☰ Menu</button>
+        <button id="btnMenu" aria-haspopup="true" aria-controls="menu"><i aria-hidden="true">☰</i><span class="long">Menu</span><span class="short">Thêm</span></button>
         <div class="menu" id="menu" hidden role="menu">
           <div class="menu-sep" id="verMenu">WebDialux-CS v1.2</div>
+          <button class="menu-item only-mobile" id="mPdf" role="menuitem">📑 Xuất PDF</button>
           <button class="menu-item" id="mHelp" role="menuitem">📖 Hướng dẫn sử dụng</button>
           <button class="menu-item" id="mTemplate" role="menuitem">⬇ Tải Excel mẫu (đường)</button>
           <button class="menu-item" id="mTemplateArea" role="menuitem">⬇ Tải Excel mẫu khu vực</button>
@@ -148,6 +209,7 @@ body:not(.area) .area-only{display:none!important}
           <div class="menu-item menu-hint" id="mIosHint" hidden>📲 Cài trên iPhone/iPad: mở bằng <b>Safari</b>, bấm <b>Chia sẻ</b> ⬆ → <b>Thêm vào MH chính</b></div>
         </div>
       </div>
+      </div><!-- /dock -->
     </div>
   </header>
 
@@ -462,9 +524,24 @@ const cleanIes = (s)=>String(s||"").replace(/_IESNA2002\.IES$/i,"").replace(/\.i
 const cell=(v,bad)=>`<td class="num${bad?" bad":""}">${v}</td>`;
 const autoMark=(txt,on,tip)=>on?`${txt}<span class="auto" title="${tip}">•</span>`:(txt||"");
 
+// Gắn khoá cột (data-k) + nhãn (data-l) cho từng ô — điện thoại dùng để hiện mỗi dòng thành một thẻ
+const COLK=["stt","tuyen","cap","den","hang","cs","ltb","uo","ul","ti","sr","diem","hang2","kq"];
+function cardify(tb){
+  const heads=[...document.querySelectorAll("#tbl thead th")].map(th=>th.textContent.trim());
+  for(const tr of tb.rows){
+    let c=0;
+    for(const td of tr.cells){
+      const span=td.colSpan||1;
+      if(span>1) td.dataset.k="reason";
+      else { td.dataset.k=COLK[c]||""; if(c>=6&&c<=12){ td.classList.add("m"); td.dataset.l=heads[c]||""; } }
+      c+=span;
+    }
+    if(!tr.cells[0]?.textContent.trim() && !tr.cells[1]?.textContent.trim()) tr.classList.add("cont");
+  }
+}
 function drawRows(){
   const tb=$("tbody"); tb.innerHTML="";
-  if(isRanked()) return drawRowsRanked(tb);
+  if(isRanked()){ drawRowsRanked(tb); cardify(tb); return; }
   for(const i of visibleIndices()){
     const r=results[i];
     let kq = r.status!=="ok" ? `<span class="pill na">${r.status}</span>`
@@ -480,6 +557,7 @@ function drawRows(){
       `<td class="t">${kq}</td>`;
     tb.appendChild(tr);
   }
+  cardify(tb);
 }
 
 function drawRowsRanked(tb){
@@ -712,7 +790,25 @@ $("btnPdf").onclick = async () => {
 if(!hasFSA) $("note").textContent="Trình duyệt không hỗ trợ ghi trực tiếp (File System Access). Dùng Chrome/Edge trên GitHub Pages để ghi đè file gốc; nếu không, kết quả sẽ tải về dạng file mới.";
 
 // ---- Menu trang chính ----
-$("btnMenu").onclick = (e) => { e.stopPropagation(); $("menu").hidden = !$("menu").hidden; };
+$("btnMenu").onclick = (e) => {
+  e.stopPropagation(); const m = $("menu"); m.hidden = !m.hidden;
+  // màn hình vừa (thanh công cụ xuống dòng, nút Menu nằm bên trái): không để menu tràn mép trái
+  m.style.left = m.style.right = "";
+  if (!m.hidden && !MQ_MOBILE.matches && m.getBoundingClientRect().left < 8) { m.style.left = "0"; m.style.right = "auto"; }
+};
+// điện thoại: MF/q0/Chế độ nằm trong trang, thanh dưới đáy chỉ còn nút; máy tính: giữ thứ tự cũ (Excel, IES, MF, q0, Chế độ, Chạy…)
+const MQ_MOBILE = matchMedia("(max-width:640px)");
+function placeOpts(){
+  const opts=[...document.querySelectorAll(".controls label.opt")], dock=document.querySelector(".dock");
+  for(const l of opts){ if(MQ_MOBILE.matches) dock.before(l); else $("btnRun").before(l); }
+  $("menu").style.left = $("menu").style.right = "";
+}
+placeOpts(); MQ_MOBILE.addEventListener("change", placeOpts);
+$("mPdf").onclick = () => {
+  $("menu").hidden = true;
+  if ($("btnPdf").disabled) { setStatus("Chưa xuất PDF được lúc này — chưa có kết quả hoặc đang tạo PDF.", true); return; }
+  $("btnPdf").click();
+};
 $("mHelp").onclick = () => { $("menu").hidden = true; $("guide").hidden = false; };
 
 // ---- Tải Excel mẫu ----
@@ -744,7 +840,11 @@ $("mTemplate").onclick = async () => {
     if(ok) setStatus("Đã tạo Excel mẫu (DATA_MAU_WEBDIALUX.xlsx): sheet DU LIEU TUYEN để điền, bảng cấp đường QCVN 07-7:2023 và hướng dẫn kèm theo. Xoá 3 dòng mẫu tô vàng rồi nạp lại.");
   }catch(e){ setStatus("Lỗi tạo Excel mẫu: "+e.message,true); }
 };
-document.addEventListener("click", (e) => { if (!e.target.closest(".menu-wrap")) $("menu").hidden = true; });
+// bấm ra ngoài menu (vùng tối trên điện thoại): chỉ đóng menu, không kích hoạt phần tử bên dưới
+document.addEventListener("click", (e) => {
+  if ($("menu").hidden || e.target.closest(".menu-wrap")) return;
+  e.preventDefault(); e.stopPropagation(); $("menu").hidden = true;
+}, true);
 // ---- Trang hướng dẫn ----
 $("guideClose").onclick = () => { $("guide").hidden = true; };
 $("guide").addEventListener("click", (e) => { if (e.target.id === "guide") $("guide").hidden = true; });
