@@ -75,10 +75,9 @@ const SAMPLES = [
   { STT: 2, [COLS.tuyen]: "Đường mẫu B — đối xứng, có dải phân cách (xoá dòng này)", "Chiều dài tuyến (m)": 1200, "SL đèn trình Sở (bộ)": 70,
     [COLS.loaituyen]: "Đường trục chính đô thị", [COLS.H]: 10.5, [COLS.vuon]: 1.5, [COLS.tilt]: 5, [COLS.width]: 14, [COLS.lanes]: 4,
     [COLS.spacing]: 35, [COLS.setback]: 1, [COLS.sidewalk]: 4, [COLS.arrangement]: "đối xứng", [COLS.dpc]: "có", [COLS.medianW]: 3 },
-  { STT: 3, [COLS.tuyen]: "Đường mẫu C — ghi cấp + chỉ định đèn (xoá dòng này)", "Chiều dài tuyến (m)": 640,
+  { STT: 3, [COLS.tuyen]: "Đường mẫu C — so le, ghi thẳng cấp đường (xoá dòng này)", "Chiều dài tuyến (m)": 640,
     [COLS.roadClass]: "C2", [COLS.H]: 9, [COLS.vuon]: 1.5, [COLS.tilt]: 10, [COLS.width]: 10.5, [COLS.lanes]: 3,
-    [COLS.spacing]: 32, [COLS.setback]: 0.8, [COLS.sidewalk]: 3.5, [COLS.arrangement]: "so le", [COLS.dpc]: "không",
-    [COLS.model]: "MAGNOLIA", [COLS.power]: 100, "CCT (K)": 4000, "CRI": 70 },
+    [COLS.spacing]: 32, [COLS.setback]: 0.8, [COLS.sidewalk]: 3.5, [COLS.arrangement]: "so le", [COLS.dpc]: "không" },
 ];
 
 const thin = { style: "thin", color: { argb: "FFD0D7E2" } };

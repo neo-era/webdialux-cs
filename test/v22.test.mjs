@@ -185,3 +185,10 @@ test("template: xuất ra file, app đọc lại bằng SheetJS và chạy đư�
   assert.ok(gm.some((g) => g.input.median && g.input.medianW > 0), "có dòng mẫu có dải phân cách");
   assert.ok(gm.every((g) => g.input.sidewalk > 0), "mọi dòng mẫu có vỉa hè");
 });
+
+test("template: dòng mẫu không chỉ định bộ đèn (để app tự chọn)", async () => {
+  const { buildTemplateWorkbook } = await import("../src/template.mjs");
+  const wb = await buildTemplateWorkbook(ExcelJS);
+  const rows = XLSX.utils.sheet_to_json(XLSX.read(Buffer.from(await wb.xlsx.writeBuffer()), { type: "buffer" }).Sheets["DU LIEU TUYEN"], { defval: null });
+  for (const r of rows) for (const c of [COLS.fitting, COLS.model, COLS.ncc, COLS.power, "CCT (K)", "CRI"]) assert.equal(r[c], null, `${r[COLS.tuyen]}: ${c}`);
+});
