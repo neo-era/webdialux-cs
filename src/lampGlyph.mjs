@@ -24,8 +24,8 @@ export function drawLuminaire3D(ctx, P, L, opts = {}) {
   const [r0, g0, b0] = color, rgba = (al) => `rgba(${r0},${g0},${b0},${al})`;
   // 1) ánh sáng toả xuống (vẽ trước, nằm dưới thân đèn)
   if (style === "beam") {
-    const tip = [c[0] + n[0] * reach, c[1] + n[1] * reach, c[2] + n[2] * reach];
-    const R = reach * 0.85, ring = [];
+    const Lb = reach * 0.7, tip = [c[0] + n[0] * Lb, c[1] + n[1] * Lb, c[2] + n[2] * Lb];  // chùm mờ dần, không chạm hẳn mặt chiếu
+    const R = reach * 0.6, ring = [];
     // vòng chân chùm sáng trên mặt vuông góc trục quang
     const e1 = Math.abs(n[2]) > 0.9 ? [1, 0, 0] : [0, 0, 1];
     const w1 = norm(cross(n, e1)), w2 = cross(n, w1);
@@ -34,7 +34,9 @@ export function drawLuminaire3D(ctx, P, L, opts = {}) {
       const hull = convexHull([[ctr[0], ctr[1]], ...ring.map((q) => [q[0], q[1]])]);
       const pt = P(...tip) || ring[0];
       const g = ctx.createLinearGradient(ctr[0], ctr[1], pt[0], pt[1]);
-      g.addColorStop(0, rgba(0.16)); g.addColorStop(0.5, rgba(0.06)); g.addColorStop(1, rgba(0));
+      // đèn càng gần camera (chùm sáng chiếm nhiều điểm ảnh) càng mờ — tránh mảng sáng lớn che khung hình
+      const A = (opts.beamAlpha ?? 1) * Math.min(1, 14 / Math.max(1, mpx));
+      g.addColorStop(0, rgba(0.14 * A)); g.addColorStop(0.45, rgba(0.045 * A)); g.addColorStop(1, rgba(0));
       ctx.fillStyle = g; ctx.beginPath(); hull.forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y))); ctx.closePath(); ctx.fill();
     }
   }

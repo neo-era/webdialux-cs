@@ -1,6 +1,7 @@
 // Tạo báo cáo PDF kiểu DIALux cho 1 tuyến/phương án.
 import { VERSION } from "./version.mjs";
 import { luminaireLabel } from "./mapping.mjs";
+import { drawLuminaire3D } from "./lampGlyph.mjs";
 import { angleLumToPoint, arrangementKind, arrangementLabel } from "./geometry.mjs";
 // Phần thuần dữ liệu (reportData) test được ở Node; phần vẽ canvas + jsPDF chạy ở trình duyệt.
 
@@ -529,14 +530,10 @@ export function perspective3DDataURL(d, result, doc = globalThis.document, K = 2
     ctx.beginPath(); ctx.moveTo(base.sx, base.sy); ctx.lineTo(top.sx, top.sy); ctx.stroke();
     const lamp = proj(p.x, p.lampLat, H);                                                           // cần vươn tới điểm sáng
     ctx.beginPath(); ctx.moveTo(top.sx, top.sy); ctx.lineTo(lamp.sx, lamp.sy); ctx.stroke();
-    const lr = Math.max(1.2, Math.min(4.5, base.s * 0.6));
-    const lg = ctx.createRadialGradient(lamp.sx, lamp.sy, 0, lamp.sx, lamp.sy, lr * 2.2);
-    const lc = `${LC[0]},${LC[1]},${LC[2]}`;
-    lg.addColorStop(0, `rgba(${lc},0.85)`); lg.addColorStop(0.5, `rgba(${lc},0.3)`); lg.addColorStop(1, `rgba(${lc},0)`);
-    ctx.save(); ctx.globalCompositeOperation = "lighter"; ctx.fillStyle = lg;
-    ctx.beginPath(); ctx.arc(lamp.sx, lamp.sy, lr * 2.2, 0, 2 * Math.PI); ctx.fill(); ctx.restore();
-    const wc = mix(LC, white, 0.6); ctx.fillStyle = `rgb(${wc[0] | 0},${wc[1] | 0},${wc[2] | 0})`;
-    ctx.beginPath(); ctx.arc(lamp.sx, lamp.sy, lr * 0.8, 0, 2 * Math.PI); ctx.fill();
+    // bộ đèn LED cắt sáng: thân đèn + mặt phát sáng theo trục quang, ánh sáng chỉ toả xuống (không quầng hắt lên trời)
+    const P3 = (x, yl, z) => { const q = proj(x, yl, z); return x + d0 > 0.5 ? [q.sx, q.sy, x + d0] : null; };
+    drawLuminaire3D(ctx, P3, { x: p.x, y: p.lampLat, z: H, aim: p.lampLat >= p.poleLat ? 90 : -90, tilt: I.tilt || 0 },
+      { k: 1, f, style: "beam", reach: H, camZ: hCam, color: LC.map((v) => v | 0), beamAlpha: 0.7 });
   }
 
   // --- thang màu E [lx] ---

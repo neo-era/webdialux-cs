@@ -4,6 +4,7 @@ import { poleLamps, lampToLum } from "./area.mjs";
 import { worldBounds } from "./areaDraw.mjs";
 import { liveLums, segmentBlocked } from "./arch.mjs";
 import { illuminanceAtPoint } from "./photometry.mjs";
+import { drawLuminaire3D } from "./lampGlyph.mjs";
 
 const DEG = Math.PI / 180;
 const sub = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
@@ -289,11 +290,10 @@ export function drawArea3D(ctx, Wpx, Hpx, state, opts = {}) {
       const Lm = lampToLum(p, l), hd = visible(Lm.x, Lm.y, Math.max(0.05, Lm.H)), at = P(p.x, p.y, Lm.H);
       if (!hd) continue;
       if (base && at && (l.arm || 0) > 0.05) { ctx.lineWidth = Math.max(0.8 * k, Math.min(3.5 * k, 0.08 * s)); ctx.beginPath(); ctx.moveTo(at[0], at[1]); ctx.lineTo(hd[0], hd[1]); ctx.stroke(); }
-      const r = Math.max(2.2 * k, Math.min(22 * k, 0.55 * pr.f / hd[2])), on = !!l.ies, col = on ? LC.map((v) => (v * 255) | 0).join(",") : "220,70,60";
-      ctx.save(); ctx.globalCompositeOperation = "lighter";
-      const gl = ctx.createRadialGradient(hd[0], hd[1], 0, hd[0], hd[1], r * 3);
-      gl.addColorStop(0, `rgba(255,255,250,${on ? 0.95 : 0.7})`); gl.addColorStop(0.18, `rgba(${col},0.55)`); gl.addColorStop(1, `rgba(${col},0)`);
-      ctx.fillStyle = gl; ctx.beginPath(); ctx.arc(hd[0], hd[1], r * 3, 0, 2 * Math.PI); ctx.fill(); ctx.restore();
+      // bộ đèn kiểu LED thật: ánh sáng chỉ toả theo trục quang (xuống, hoặc lên với đèn hắt), không quầng tròn
+      const on = !!l.ies, col = on ? LC.map((v) => (v * 255) | 0) : [220, 70, 60];
+      drawLuminaire3D(ctx, pr.P, { x: Lm.x, y: Lm.y, z: Lm.H, aim: l.aim || 0, tilt: l.tilt || 0 },
+        { k, f: pr.f, style: "beam", reach: (l.tilt || 0) > 90 ? 6 : Math.max(2, Lm.H), camZ: C[2], color: col });
     }
     if (opts.labels !== false && opts.poleLabels !== false && base) { ctx.fillStyle = "rgba(205,214,226,0.6)"; ctx.font = `600 ${9.5 * k}px sans-serif`; ctx.textAlign = "center"; ctx.fillText(p.id, topP[0], topP[1] - 10 * k); }
   }
