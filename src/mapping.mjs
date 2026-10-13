@@ -1,6 +1,7 @@
 // Ánh xạ dòng Excel (file phẳng DU LIEU TUYEN) -> input hình học cho engine,
 // và so khớp bộ đèn với file IES trong thư mục.
 
+import { arrangementKind } from "./geometry.mjs";
 export const COLS = {
   stt: "STT", tuyen: "Tuyến đường",
   H: "Độ cao bộ đèn (m)", vuon: "Độ vươn cần đèn (m)",
@@ -9,6 +10,7 @@ export const COLS = {
   arrangement: "Cách bố trí trụ", roadClass: "Cấp đường", loaituyen: "Loại tuyến",
   dpc: "Dải phân cách giữa", luuluong: "Lưu lượng xe",
   sidewalk: "Độ rộng vỉa hè (m)", medianW: "Độ rộng dải phân cách (m)",
+  rot: "Góc xoay bộ đèn (độ)", perPole: "Số bộ đèn/trụ", mf: "Hệ số bảo trì MF",
   model: "Loại đèn", fitting: "Fitting", power: "Công suất LED (W)", ncc: "Nhà cung cấp",
 };
 
@@ -80,7 +82,8 @@ export function rowToGeometry(row) {
   let autoClass = false, classSource = "cột";
   const dpc = String(row[COLS.dpc] || "").toLowerCase().trim();
   const noMedian = dpc === "" || dpc.includes("không") || dpc.includes("khong") || dpc === "0" || dpc === "no" || dpc === "false";
-  const median = !noMedian && (dpc.includes("có") || dpc.includes("co") || dpc.includes("yes") || dpc.includes("true") || dpc === "1");
+  const center = arrangementKind(arrangement) === "center";   // trụ trên dải phân cách → chắc chắn có dải
+  const median = center || (!noMedian && (dpc.includes("có") || dpc.includes("co") || dpc.includes("yes") || dpc.includes("true") || dpc === "1"));
   // vỉa hè: dùng giới hạn dải tính SR + vẽ; dải phân cách: chỉ để vẽ (engine coi W = tổng các làn)
   const swRaw = num(row[COLS.sidewalk]);
   const sidewalk = swRaw != null && swRaw > 0 ? swRaw : null;
@@ -94,9 +97,23 @@ export function rowToGeometry(row) {
     autoClass = true;
   }
 
-  const overhang = vuon - setback; // net light-point so với mép gần
+  // Tư thế lắp đặt thêm: góc xoay quanh trục đứng, số bộ đèn/trụ, MF riêng của tuyến
+  const rot = num(row[COLS.rot]) ?? 0;
+  const ppRaw = num(row[COLS.perPole]);
+  const perPole = ppRaw != null && ppRaw >= 1 ? Math.round(ppRaw) : 1;
+  let MF = num(row[COLS.mf]);
+  if (MF != null && MF > 1 && MF <= 100) MF = MF / 100;              // ghi dạng phần trăm (80 → 0,8)
+  if (MF != null && !(MF >= 0.3 && MF <= 1)) { w.push(`Hệ số bảo trì MF = ${row[COLS.mf]} không hợp lệ (0,3–1) — dùng MF chung`); MF = null; }
+  let overhang;
+  if (center) {
+    // trụ trên tim dải phân cách: điểm sáng vươn ra khỏi mép dải = vươn − ½ bề rộng dải
+    const mw = medianW ?? 2;
+    if (medianW == null) w.push("bố trí giữa: chưa ghi Độ rộng dải phân cách — giả định 2 m");
+    overhang = vuon - mw / 2;
+    if (overhang < 0) w.push(`bố trí giữa: cần vươn ${vuon} m ngắn hơn ½ dải phân cách — điểm sáng nằm trên dải`);
+  } else overhang = vuon - setback; // net light-point so với mép gần
   return {
-    input: { H, overhang, spacing, width, lanes, tilt, arrangement, roadClass, vuon, setback, sidewalk, median, medianW },
+    input: { H, overhang, spacing, width, lanes, tilt, arrangement, roadClass, vuon, setback, sidewalk, median: median || center, medianW, rot, perPole, MF },
     warnings: w, autoClass, classSource,
     meta: {
       stt: row[COLS.stt], tuyen: row[COLS.tuyen],

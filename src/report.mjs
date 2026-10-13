@@ -1,6 +1,7 @@
 // Tạo báo cáo PDF kiểu DIALux cho 1 tuyến/phương án.
 import { VERSION } from "./version.mjs";
 import { luminaireLabel } from "./mapping.mjs";
+import { angleLumToPoint, arrangementKind, arrangementLabel } from "./geometry.mjs";
 // Phần thuần dữ liệu (reportData) test được ở Node; phần vẽ canvas + jsPDF chạy ở trình duyệt.
 
 /** Mã bộ đèn (Article No.) từ [LUMCAT] + [LAMP], khử lặp khi một bên đã chứa bên kia. */
@@ -42,12 +43,13 @@ export function reportData(input, result, ph, meta = {}) {
       boomLength: input.vuon ?? null, setback: input.setback ?? null,
       width: input.width, lanes: input.lanes, arrangement: input.arrangement, MF: input.MF ?? 0.8,
       sidewalk: input.sidewalk ?? null, median: !!input.median, medianW: input.medianW ?? null,
+      rot: input.rot || 0, perPole: input.perPole || 1,
       surface: "CIE R3, q0 " + String(input.q0 ?? 0.07).replace(".", ","),
       q0: input.q0 ?? 0.07,
     },
     energy: energyIndicators({
       P: ph.inputWatts, spacing: input.spacing, width: input.width,
-      Eav: result.E.avg, arrangement: input.arrangement,
+      Eav: result.E.avg, arrangement: input.arrangement, perPole: input.perPole || 1,
     }),
     checks: [
       checkRow("Lav (Ltb)", road.Lav, req.Ltb, c.Ltb, "cd/m²"),
@@ -66,12 +68,48 @@ export function reportData(input, result, ph, meta = {}) {
  * Cường độ sáng lớn nhất tại góc dọc γ (qua mọi mặt C), quy về cd/klm
  * (chia cho quang thông bộ đèn / 1000). Dùng cho khối "Max. luminous intensities".
  */
-export function maxIntensityPerKlm(ph, makeIntensity, gammaDeg) {
+export function maxIntensityPerKlm(ph, makeIntensity, gammaDeg, pose = {}) {
+  // Theo TƯ THẾ LẮP THẬT (như DIALux "with the luminaire installed for use"): xét mọi hướng tạo với
+  // phương thẳng đứng hướng xuống một góc ≥ gammaDeg trong hệ toạ độ THẾ GIỚI, quy về hệ của đèn đã nghiêng/xoay.
   const I = makeIntensity(ph);
-  let imax = 0;
-  for (let c = 0; c < 360; c += 5) imax = Math.max(imax, I(c, gammaDeg));
   const flux = ph.totalLumens || null;
-  return flux ? imax / (flux / 1000) : null; // cd/klm
+  if (!flux) return null;
+  const DEG = Math.PI / 180, lum = { x: 0, y: 0, H: 0, tilt: pose.tilt || 0, rot: pose.rot || 0, c0dir: 1 };
+  let imax = 0;
+  for (let gw = gammaDeg; gw <= 180; gw += 0.5) {
+    const sg = Math.sin(gw * DEG), cg = Math.cos(gw * DEG);
+    for (let f = 0; f < 360; f += 2.5) {
+      const a = angleLumToPoint(lum, { x: sg * Math.sin(f * DEG), y: sg * Math.cos(f * DEG), z: -cg });
+      const v = I(a.C, a.gamma); if (v > imax) imax = v;
+    }
+  }
+  return imax / (flux / 1000); // cd/klm
+}
+
+/**
+ * Tỷ lệ quang thông phát lên trên phương ngang khi đèn ở tư thế lắp (ULOR = Φ↑ / Φ bộ đèn).
+ * Tích phân ∫∫ I sinγ dγ dφ trên bán cầu trên (thế giới), chia cho quang thông khai báo.
+ */
+/** Quang thông bộ đèn (lm) = tích phân cường độ trên cả mặt cầu (tư thế bất kỳ cho cùng kết quả). */
+function integrateFluxLocal(ph, makeIntensity) {
+  const I = makeIntensity(ph), DEG = Math.PI / 180, dg = 1, df = 5; let F = 0;
+  for (let g = dg / 2; g < 180; g += dg) for (let c = df / 2; c < 360; c += df) F += I(c, g) * Math.sin(g * DEG) * (dg * DEG) * (df * DEG);
+  return F;
+}
+
+export function upwardRatio(ph, makeIntensity, pose = {}) {
+  const I = makeIntensity(ph), flux = ph.totalLumens || null;
+  if (!flux) return null;
+  const DEG = Math.PI / 180, lum = { x: 0, y: 0, H: 0, tilt: pose.tilt || 0, rot: pose.rot || 0, c0dir: 1 };
+  const dg = 1, df = 5; let up = 0;
+  for (let gw = 90 + dg / 2; gw < 180; gw += dg) {
+    const sg = Math.sin(gw * DEG), cg = Math.cos(gw * DEG);
+    for (let f = df / 2; f < 360; f += df) {
+      const a = angleLumToPoint(lum, { x: sg * Math.sin(f * DEG), y: sg * Math.cos(f * DEG), z: -cg });
+      up += I(a.C, a.gamma) * sg * (dg * DEG) * (df * DEG);
+    }
+  }
+  return Math.max(0, Math.min(1, up / flux));
 }
 
 /**
@@ -82,14 +120,16 @@ export function maxIntensityPerKlm(ph, makeIntensity, gammaDeg) {
  *  - De    : điện năng/m²/năm (kWh/m²·yr) = (nSide·P/(S·W))·giờ/1000
  *  - annualKwh: điện năng/năm cho cụm đèn 1 nhịp (kWh/yr)
  */
-export function energyIndicators({ P, spacing, width, Eav, arrangement, hours = 4000 }) {
-  const two = /đối xứng|doi xung|so le|staggered|two|opposite/i.test(arrangement || "");
-  const nSide = two ? 2 : 1;
+export function energyIndicators({ P, spacing, width, Eav, arrangement, hours = 4000, perPole = 1 }) {
+  const kind = arrangementKind(arrangement);
+  // nSide = số bộ đèn trong 1 nhịp: 2 hàng (đối xứng/so le) hoặc cần đôi (giữa); nhân số bộ đèn/trụ
+  const nSide = (kind === "single" ? 1 : 2) * Math.max(1, Math.round(perPole || 1));
   if (!P || !spacing || !width) return { nSide, Wkm: null, Dp: null, De: null, annualKwh: null };
   const perM2 = nSide * P / (spacing * width);  // W/m²
   return {
     nSide,
-    Wkm: nSide * (1000 / spacing) * P,
+    // như DIALux: số đèn trên 1 km mỗi hàng làm tròn LÊN (⌈1000/S⌉); chặn sai số dấu phẩy động khi chia hết
+    Wkm: nSide * Math.ceil(1000 / spacing - 1e-9) * P,
     Dp: Eav ? perM2 / Eav : null,
     De: perM2 * hours / 1000,
     annualKwh: nSide * P * hours / 1000,
@@ -223,7 +263,8 @@ export function polarDataURL(ph, makeIntensity, doc = globalThis.document) {
  */
 export function lateralLayout(I = {}) {
   const W = I.width || 7;
-  const mW = I.median ? (I.medianW > 0 ? I.medianW : 2) : 0;
+  const center = arrangementKind(I.arrangement) === "center";     // trụ trên dải phân cách → luôn có dải
+  const mW = (I.median || center) ? (I.medianW > 0 ? I.medianW : 2) : 0;
   const Wt = W + mW;
   const sb = (I.setback != null && isFinite(I.setback)) ? Math.max(0, I.setback) : 0.5;
   const walk = I.sidewalk > 0 ? I.sidewalk : Math.max(3, sb + 1);
@@ -239,13 +280,12 @@ export function lateralLayout(I = {}) {
     if (mW && Math.abs(yd) < mW / 2) return { kind: "median", d: yd };
     return { kind: "road", y: (!mW || yd <= -mW / 2) ? yd + Wt / 2 : yd + Wt / 2 - mW };
   };
-  return { W, mW, Wt, walk, sb, toDraw, classify };
+  return { W, mW, Wt, walk, sb, toDraw, classify, center };
 }
 
 export function planDataURL(d, doc = globalThis.document) {
   const I = d.install, W = I.width || 7, S = I.spacing || 30, ov = I.overhang || 0;
-  const two = /đối xứng|doi xung|so le|staggered|opposite/i.test(I.arrangement || "");
-  const stag = /so le|staggered/i.test(I.arrangement || "");
+  const kindA = arrangementKind(I.arrangement), two = kindA === "opposite" || kindA === "staggered", stag = kindA === "staggered";
   const LY = lateralLayout(I), Wt = LY.Wt, mW = LY.mW, walk = LY.walk, sb = LY.sb;
   const cv = doc.createElement("canvas"); cv.width = 760; cv.height = 400;
   const ctx = cv.getContext("2d"); ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, cv.width, cv.height);
@@ -292,7 +332,8 @@ export function planDataURL(d, doc = globalThis.document) {
   };
   const near = (k) => poleAt(k * S, -Wt / 2 - sb, LY.toDraw(ov));
   const far = (k, off = 0) => poleAt(k * S + off, Wt / 2 + sb, LY.toDraw(W - ov));
-  for (let k = 0; k <= 1; k++) { near(k); if (two) far(k, stag ? S / 2 : 0); }
+  if (LY.center) for (let k = 0; k <= 1; k++) { poleAt(k * S, 0, LY.toDraw(W / 2 - ov)); poleAt(k * S, 0, LY.toDraw(W / 2 + ov)); }
+  else for (let k = 0; k <= 1; k++) { near(k); if (two) far(k, stag ? S / 2 : 0); }
   if (stag) far(0, -S / 2);
   // kích thước S (dưới) và W (phải, đo lòng đường)
   ctx.strokeStyle = "#1f2937"; ctx.fillStyle = "#1f2937"; ctx.lineWidth = 1; ctx.font = "16px sans-serif";
@@ -330,8 +371,7 @@ export function cctToRGB(K) {
 export function perspective3DDataURL(d, result, doc = globalThis.document) {
   const I = d.install, W = I.width || 7, S = I.spacing || 30, H = I.H || 9, ov = I.overhang || 0;
   const LY = lateralLayout(I), Wt = LY.Wt, mW = LY.mW;
-  const two = /đối xứng|doi xung|so le|staggered|opposite/i.test(I.arrangement || "");
-  const stag = /so le|staggered/i.test(I.arrangement || "");
+  const kindA = arrangementKind(I.arrangement), two = kindA === "opposite" || kindA === "staggered", stag = kindA === "staggered";
   const CW = 840, CH = 400, xNear = 6, Xfar = 220;
   const cv = doc.createElement("canvas"); cv.width = CW; cv.height = CH;
   const ctx = cv.getContext("2d");
@@ -448,6 +488,7 @@ export function perspective3DDataURL(d, result, doc = globalThis.document) {
   // cây bụi thấp trên dải phân cách (đủ rộng mới trồng), vẽ xa trước
   if (mW >= 1.2) {
     for (let x = Math.floor(Xfar / 7) * 7; x >= 14; x -= 7) {
+      if (LY.center && Math.abs(x - Math.round(x / S) * S) < 2.5) continue;   // chừa chỗ chân trụ trên dải
       const p = proj(x, 0, 0.35); if (p.s < 0.15) continue;
       const r = Math.max(1, Math.min(14, Math.min(mW * 0.22, 0.6) * p.s));
       const t = Math.max(0, Math.min(1, sampleE(x, W / 2) / Emax));
@@ -461,6 +502,10 @@ export function perspective3DDataURL(d, result, doc = globalThis.document) {
   const sb3 = LY.sb;
   const poles = [];
   for (let k = 0; k <= Math.floor(Xfar / S) + 1; k++) {
+    if (LY.center) {                                                                                  // trụ ở tim dải phân cách, cần đôi
+      poles.push({ x: k * S, poleLat: 0, lampLat: LY.toDraw(W / 2 - ov) }, { x: k * S, poleLat: 0, lampLat: LY.toDraw(W / 2 + ov) });
+      continue;
+    }
     poles.push({ x: k * S, poleLat: -(Wt / 2 + sb3), lampLat: LY.toDraw(ov) });                        // hàng gần: trụ trên vỉa hè
     if (two) poles.push({ x: k * S + (stag ? S / 2 : 0), poleLat: Wt / 2 + sb3, lampLat: LY.toDraw(W - ov) }); // hàng xa
   }
@@ -771,12 +816,12 @@ export function renderRoadPage(doc, { input, result, ph, meta, makeIntensity }) 
 
   // Thông số lắp đặt (bố cục kiểu DIALux: toàn chiều rộng) + Imax + hình cần đèn
   const I = d.install, en = d.energy;
-  const i70 = maxIntensityPerKlm(ph, makeIntensity, 70);
-  const i80 = maxIntensityPerKlm(ph, makeIntensity, 80);
-  const i90 = maxIntensityPerKlm(ph, makeIntensity, 90);
-  const arrText = /đối xứng|doi xung/i.test(I.arrangement) ? "hai bên đối diện"
-    : /so le|staggered/i.test(I.arrangement) ? "hai bên so le"
-    : /giữa/i.test(I.arrangement) ? "trên dải phân cách" : "một bên";
+  const pose = { tilt: I.tilt || 0, rot: I.rot || 0 };                     // tư thế lắp thật
+  const i70 = maxIntensityPerKlm(ph, makeIntensity, 70, pose);
+  const i80 = maxIntensityPerKlm(ph, makeIntensity, 80, pose);
+  const i90 = maxIntensityPerKlm(ph, makeIntensity, 90, pose);
+  const ulor = upwardRatio(ph, makeIntensity, pose);
+  const arrText = arrangementLabel(I.arrangement);
   if (y + 70 > 284) { y = newPage(doc, d); }
   mark("Thông số lắp đặt");
   doc.setFontSize(9.6); doc.setTextColor(40, 46, 58);
@@ -789,9 +834,11 @@ export function renderRoadPage(doc, { input, result, ph, meta, makeIntensity }) 
     ["(2) Vươn điểm sáng", vn(I.overhang, 2) + " m"],
     ["(3) Góc nghiêng cần", vn(I.tilt, 0) + "°"],
     ["(4) Chiều dài cần", vn(I.boomLength, 2) + " m"],
-    ["Trụ đến mép đường (setback)", vn(I.setback, 2) + " m"],
+    arrangementKind(I.arrangement) === "center" ? ["Bề rộng dải phân cách (trụ ở tim)", vn(I.medianW ?? 2, 2) + " m"] : ["Trụ đến mép đường (setback)", vn(I.setback, 2) + " m"],
+    ...(I.rot ? [["Góc xoay bộ đèn", vn(I.rot, 0) + "°"]] : []),
+    ...((I.perPole || 1) > 1 ? [["Số bộ đèn / trụ", String(I.perPole)]] : []),
     ["Tiêu thụ / tuyến", vn(en.Wkm, 0) + " W/km"],
-    ["ULR / ULOR", "0,00 / 0,00"],
+    ["ULR / ULOR", ulor == null ? "–" : vn(ulor * (ph.totalLumens / (integrateFluxLocal(ph, makeIntensity) || ph.totalLumens)), 2) + " / " + vn(ulor, 2)],
     [{ t: "Cường độ sáng max ≥ 70°", c: [40, 46, 58] }, vn(i70, 0) + " cd/klm"],
     ["Cường độ sáng max ≥ 80°", vn(i80, 0) + " cd/klm"],
     ["Cường độ sáng max ≥ 90°", vn(i90, 1) + " cd/klm"],

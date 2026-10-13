@@ -28,13 +28,13 @@ export function calcRoad(input) {
   const {
     ies, H, overhang, spacing, width, lanes = 2, arrangement = "1 bên",
     tilt = 0, MF = 0.8, roadClass = "D1", spanWindow = 5,
-    q0 = null, detail = false, sidewalk = null, setback = null,
+    q0 = null, detail = false, sidewalk = null, setback = null, rot = 0, perPole = 1,
   } = input;
   // Bảng r mặt đường: ưu tiên rfn truyền vào; nếu không, dùng R3 (q0=0,07),
   // nhân tỉ lệ nếu người dùng chọn q0 khác (vd 0,08 theo DIALux Tarmac).
   const rfn = input.rfn || (q0 && q0 !== R3.q0 ? scaleRTable(R3, q0) : R3);
 
-  const g = { H, overhang, spacing, width, lanes, arrangement, tilt, spanWindow };
+  const g = { H, overhang, spacing, width, lanes, arrangement, tilt, spanWindow, rot: rot || 0, perPole: perPole || 1 };
   const I = makeIntensity(ies);
   const lums = buildLuminaires(g);
   const grid = buildGrid(g);
@@ -45,10 +45,10 @@ export function calcRoad(input) {
   const E = stats(Evals);
 
   // Độ chói theo từng observer
-  const obsResults = observers.map((obs) => {
+  const obsResults = observers.map((obs, k) => {
     const Lvals = grid.points.map((P) => luminanceAtPoint(P, lums, I, rfn, obs, MF));
     const s = stats(Lvals);
-    const Ul = longitudinalUniformity(Lvals, grid);
+    const Ul = longitudinalUniformity(Lvals, grid, k);   // observer k đứng trên tim làn k
     const { Lv, TI } = thresholdIncrement(lums, I, obs, s.avg, MF);
     const out = { pos: obs, Lav: s.avg, Uo: s.min / s.avg, Ul, Lmin: s.min, Lmax: s.max, Lv, TI };
     if (detail) out.Lvals = Lvals;

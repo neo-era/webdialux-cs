@@ -6,6 +6,7 @@
 // Sheet 3 "Theo tuyến"        : 1 dòng/tuyến với bộ đèn chọn + chỉ tiêu + kết luận.
 
 import { VERSION } from "./version.mjs";
+import { arrangementKind, arrangementLabel } from "./geometry.mjs";
 import { rowToGeometry, luminaireLabel } from "./mapping.mjs";
 
 /**
@@ -43,8 +44,9 @@ const r2 = (x) => (x == null || !isFinite(x)) ? null : Math.round(x * 100) / 100
 const r1 = (x) => (x == null || !isFinite(x)) ? null : Math.round(x * 10) / 10;
 const r0 = (x) => (x == null || !isFinite(x)) ? null : Math.round(x);
 const srcLbl = (cs) => cs === "loại tuyến" ? "quy đổi từ loại tuyến" : cs === "hình học" ? "tự xác định (hình học)" : "nhập trực tiếp";
-const arrLbl = (a) => /đối xứng|doi xung/i.test(a || "") ? "hai bên đối diện" : /so le|staggered/i.test(a || "") ? "hai bên so le" : /giữa/i.test(a || "") ? "trên dải phân cách" : "một bên";
-const nSideOf = (a) => /đối xứng|doi xung|so le|staggered/i.test(a || "") ? 2 : 1;
+const arrLbl = (a) => arrangementLabel(a);
+// số bộ đèn mỗi vị trí trong 1 nhịp: 2 hàng (đối xứng/so le) hoặc cần đôi (giữa), nhân số bộ đèn/trụ
+const nSideOf = (a, perPole = 1) => (arrangementKind(a) === "single" ? 1 : 2) * Math.max(1, Math.round(perPole || 1));
 const raw = (x) => (x == null || !isFinite(x)) ? null : x;
 const F = (formula, result) => ({ formula, result: result ?? "" });
 const cleanIes = luminaireLabel; // cùng tên bộ đèn với PDF
@@ -54,7 +56,7 @@ export function estimateLampCount(row, input) {
   const sl = Number(row?.["SL đèn trình Sở (bộ)"] ?? row?.["SL đèn Sở duyệt (bộ)"] ?? row?.["Số bộ đèn"]);
   if (isFinite(sl) && sl > 0) return { n: Math.round(sl), src: "theo Excel" };
   const L = Number(row?.["Chiều dài tuyến (m)"]);
-  if (isFinite(L) && L > 0 && input?.spacing > 0) return { n: Math.ceil(L / input.spacing) * nSideOf(input.arrangement), src: "ước tính L/S" };
+  if (isFinite(L) && L > 0 && input?.spacing > 0) return { n: Math.ceil(L / input.spacing) * nSideOf(input.arrangement, input.perPole), src: "ước tính L/S" };
   return { n: null, src: "" };
 }
 
@@ -111,7 +113,7 @@ export async function buildResultWorkbook(ExcelJS, { results, rows = [], q0 = 0.
   // Công thức kèm giá trị cache (trình xem không tự tính vẫn thấy kết quả); Excel tính lại khi mở.
   wb.calcProperties.fullCalcOnLoad = true;
   const dstr = date.toLocaleDateString("vi-VN"), tstr = date.toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" });
-  const sub = `${projectName ? projectName + " · " : ""}Ngày tính ${dstr} ${tstr} · WebDialux-CS ${version} · QCVN 07-7:2023 · CIE 140 · mặt đường CIE R3 q0 ${String(q0).replace(".", ",")} · MF ${String(MF).replace(".", ",")} · ${results.length} tuyến`;
+  const sub = `${projectName ? projectName + " · " : ""}Ngày tính ${dstr} ${tstr} · WebDialux-CS ${version} · QCVN 07-7:2023 · CIE 140 · mặt đường CIE R3 q0 ${String(q0).replace(".", ",")} · MF ${String(MF).replace(".", ",")}${results.some((r) => r && r.input && r.input.MF != null) ? " (tuyến ghi MF riêng dùng MF riêng)" : ""} · ${results.length} tuyến`;
 
   // ===== Sheet 1: Chấm điểm chi tiết =====
   const ws = wb.addWorksheet("Chấm điểm chi tiết", { views: [{ state: "frozen", ySplit: 4 }] });

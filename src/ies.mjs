@@ -10,7 +10,7 @@ function tokenizeNumbers(str) {
  * @param {string} text
  * @returns {object} photometry
  */
-export function parseIES(text) {
+export function parseIES(text, { applyBallast = false } = {}) {
   // Chuẩn hoá xuống dòng
   const raw = text.replace(/\r\n?/g, "\n").split("\n");
 
@@ -66,7 +66,9 @@ export function parseIES(text) {
   for (let i = 0; i < nH; i++) hAngles.push(nums[p++]);
 
   // Ma trận candela: thứ tự theo chuẩn là [mỗi góc ngang H] x [mỗi góc dọc V]
-  const factor = candelaMultiplier * (ballastFactor || 1);
+  // Ballast factor: DIALux KHÔNG nhân BF vào cường độ (báo cáo ghi ΦLum = ΦLamp, η = 100%) — đối chiếu
+  // ca Cầu Bình Triệu 2 (BF 0,961) khớp Ltb/Imax chỉ khi bỏ BF. Muốn theo LM-63 thuần thì applyBallast: true.
+  const factor = candelaMultiplier * (applyBallast ? (ballastFactor || 1) : 1);
   const candela = [];
   for (let h = 0; h < nH; h++) {
     const row = [];

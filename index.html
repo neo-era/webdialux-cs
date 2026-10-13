@@ -183,6 +183,8 @@ a{color:var(--accent)}
     <ul>
       <li><b>File Excel</b> (sheet <code>DU LIEU TUYEN</code>): mỗi dòng là một tuyến/phương án. Cột hình học bắt buộc: Độ cao bộ đèn (m), Độ vươn cần đèn (m), Khoảng cách trụ đến mép đường (m), Độ rộng lòng đường (m), Khoảng cách trụ TB (m), Số làn xe, Góc nghiêng bộ đèn (độ), Cách bố trí trụ, Dải phân cách giữa. Tải <b>Excel mẫu</b> (☰ Menu) để có sẵn đủ cột, danh sách chọn và bảng cấp đường QCVN 07-7:2023.</li>
       <li><b>Độ rộng vỉa hè (m)</b> (tuỳ chọn): giới hạn dải tính SR = min(5 m, ½ lòng đường, vỉa hè) và được vẽ trong phối cảnh 3D, mặt bằng; trụ đứng trên vỉa hè. Để trống: SR như cũ, hình vẽ vỉa hè minh hoạ. App cảnh báo nếu khoảng cách trụ-mép lớn hơn vỉa hè.</li>
+      <li><b>Tư thế lắp đặt</b> (tuỳ chọn): <b>Góc xoay bộ đèn (độ)</b> quanh trục đứng (0 = chiếu vuông góc vào đường), <b>Số bộ đèn/trụ</b>, <b>Hệ số bảo trì MF</b> riêng của tuyến (ghi đè ô MF chung). App tính độ rọi, độ chói, TI, Imax 70/80/90° và ULOR theo đúng tư thế đèn đã nghiêng/xoay như khi lắp thật.</li>
+      <li><b>Bố trí "giữa"</b>: trụ đặt trên tim dải phân cách, cần đôi chiếu về hai chiều; điểm sáng vươn ra khỏi mép dải = Độ vươn cần − ½ Độ rộng dải phân cách (chưa ghi bề rộng dải → giả định 2 m).</li>
       <li><b>Độ rộng dải phân cách (m)</b> (tuỳ chọn): khi <i>Dải phân cách giữa</i> = có, phối cảnh 3D và mặt bằng vẽ dải phân cách ở giữa (trống → 2 m). Chỉ dùng để vẽ — <i>Độ rộng lòng đường</i> vẫn là tổng các làn.</li>
       <li><b>Cấp đường</b> — app xác định theo thứ tự ưu tiên: (1) cột <code>Cấp đường</code> nếu ghi A/B1/B2/C1/C2/D1/D2/E; (2) cột <code>Loại tuyến</code> ghi theo <b>tên loại đường trong QCVN 07</b> (xem bảng dưới) quy đổi sang cấp; (3) nếu bỏ trống cả hai, app tự đoán theo bề rộng/số làn. Giá trị do app tự xác định có dấu <span class="auto">•</span> kèm ghi chú nguồn.</li>
       <li><b>Tên "Loại tuyến" theo QCVN 07 → cấp</b> (hậu tố 1/2 tự suy từ cột <code>Dải phân cách giữa</code>; D1/D2 theo hè sáng/tối):
@@ -245,7 +247,7 @@ a{color:var(--accent)}
       <li>Trong khung xem trước có thể bị chặn tải — mở app ở <code>neo-era.github.io/webdialux-cs/</code> hoặc local là tải mượt.</li>
       <li>Phiên bản app hiển thị cạnh tên (badge) và trong menu; mỗi bản cập nhật tăng 0,1. Nếu không thấy bản mới, nhấn <b>Ctrl+F5</b>.</li>
       <li>Dòng "Thiếu IES" = chưa có file .ies khớp model+công suất → bổ sung vào thư mục IES.</li>
-      <li><b>Độ chói</b> dùng bảng R3 CIE (khớp DIALux cho Ltb &amp; Uo). <b>TI</b> là ước tính, thiên an toàn — dùng tham khảo.</li>
+      <li><b>Độ chói</b> dùng bảng R3 CIE (khớp DIALux cho Ltb &amp; Uo). Cường độ sáng lấy đúng theo file IES, <b>không nhân ballast factor</b> (như DIALux). <b>Ul</b> tính trên tim làn của từng observer (EN 13201-3). <b>TI</b> là ước tính, thiên an toàn — dùng tham khảo.</li>
     </ul>
 
     <h3>8. Ngưỡng cấp đường (QCVN 07-7:2023)</h3>
@@ -614,7 +616,7 @@ $("btnPdf").onclick = async () => {
       items: jobs,
       prepare: (j)=>{
         // cấp đường: dùng cấp đã xác định ở bước tính (có thể là cấp tự phân)
-        const input={...j.g.input, roadClass: (j.res&&j.res.roadClass)||j.g.input.roadClass, MF, q0, detail:true};
+        const input={...j.g.input, roadClass: (j.res&&j.res.roadClass)||j.g.input.roadClass, MF: j.g.input.MF ?? MF, q0, detail:true};
         try{ return {...j, input, result: calcRoad({ies:j.e.ph, ...input})}; }catch(_){ return null; }
       },
       makeDoc: ()=>makeDoc({jsPDF,font}),

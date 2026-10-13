@@ -6,19 +6,39 @@ const DEG = Math.PI / 180;
  * Trả về mỗi đèn: {x, y, H, tilt, c0dir} với c0dir = +1 (C0 hướng +Y) hoặc -1 (hướng -Y).
  * @param {object} g {H, overhang, spacing, width, arrangement, tilt, spanWindow}
  */
+/** Nhận dạng kiểu bố trí từ chữ trong Excel. */
+export function arrangementKind(a) {
+  const s = String(a || "").toLowerCase();
+  if (/giữa|giua|center|median/.test(s)) return "center";
+  if (/so le|stagger/.test(s)) return "staggered";
+  if (/đối xứng|doi xung|two-sided|opposite|hai bên|2 bên/.test(s)) return "opposite";
+  return "single";
+}
+
+/** Nhãn bố trí hiển thị (PDF, Excel). */
+export function arrangementLabel(a) {
+  return { center: "trên dải phân cách, cần đôi", staggered: "hai bên so le", opposite: "hai bên đối diện", single: "một bên" }[arrangementKind(a)];
+}
+
 export function buildLuminaires(g) {
-  const { H, overhang, spacing: S, width: W, arrangement, tilt = 0, spanWindow = 5 } = g;
+  const { H, overhang, spacing: S, width: W, arrangement, tilt = 0, spanWindow = 5, rot = 0, perPole = 1 } = g;
+  const kind = arrangementKind(arrangement);
+  const n = Math.max(1, Math.round(perPole || 1));
   const lums = [];
-  const near = (k) => ({ x: k * S, y: overhang, H, tilt, c0dir: +1 });
-  const far = (k, off = 0) => ({ x: k * S + off, y: W - overhang, H, tilt, c0dir: -1 });
+  const put = (l) => { for (let i = 0; i < n; i++) lums.push(l); };     // n bộ đèn chung 1 vị trí
+  const near = (k) => ({ x: k * S, y: overhang, H, tilt, rot, c0dir: +1 });
+  const far = (k, off = 0) => ({ x: k * S + off, y: W - overhang, H, tilt, rot, c0dir: -1 });
   for (let k = -spanWindow; k <= spanWindow + 1; k++) {
-    lums.push(near(k));
-    if (arrangement === "đối xứng" || arrangement === "doi xung" || arrangement === "two-sided") {
-      lums.push(far(k));
-    } else if (arrangement === "so le" || arrangement === "staggered") {
-      lums.push(far(k, S / 2));
+    if (kind === "center") {
+      // trụ trên dải phân cách (tim đường, bề rộng dải coi = 0 trong tính toán), cần đôi:
+      // đèn chiếu về mép gần (y=0) và đèn chiếu về mép xa (y=W), mỗi đèn vươn `overhang` ra khỏi mép dải
+      put({ x: k * S, y: W / 2 - overhang, H, tilt, rot, c0dir: -1 });
+      put({ x: k * S, y: W / 2 + overhang, H, tilt, rot, c0dir: +1 });
+      continue;
     }
-    // "1 bên"/"giữa": vòng 1 chỉ một hàng gần (giữa xử lý sau)
+    put(near(k));
+    if (kind === "opposite") put(far(k));
+    else if (kind === "staggered") put(far(k, S / 2));
   }
   return lums;
 }
@@ -62,6 +82,12 @@ export function angleLumToPoint(lum, P) {
   let vz = (P.z ?? 0) - lum.H;
   // Hướng C0 theo c0dir: nếu c0dir = -1 (đèn phía xa, C0 hướng -Y) thì lật trục Y
   vy *= lum.c0dir;
+  // Góc xoay bộ đèn quanh trục đứng (độ, dương = ngược chiều kim đồng hồ nhìn từ trên, trong hệ của đèn)
+  if (lum.rot) {
+    const r = lum.rot * DEG, cr = Math.cos(r), sr = Math.sin(r);
+    const rx = vx * cr + vy * sr, ry = -vx * sr + vy * cr;
+    vx = rx; vy = ry;
+  }
   // Áp tilt: xoay quanh trục X (dọc đường) 1 góc -tilt để đưa về hệ quang của đèn
   const t = -(lum.tilt || 0) * DEG;
   const cy = vy * Math.cos(t) - vz * Math.sin(t);

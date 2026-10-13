@@ -20,10 +20,10 @@ test("parse: kích thước ma trận candela khớp nV x nH", () => {
   assert.ok(MAG.totalLumens > 0 && MAG.inputWatts > 0);
 });
 
-test("tích phân candela ~ quang thông x ballast (<=5%)", () => {
+test("tích phân candela ~ quang thông khai báo (<=5%, không nhân ballast như DIALux)", () => {
   for (const ph of [MAG, CAR]) {
     const flux = integrateFlux(ph);
-    const expected = ph.totalLumens * (ph.ballastFactor || 1);
+    const expected = ph.totalLumens;
     const err = Math.abs(flux - expected) / expected;
     assert.ok(err < 0.05, `lệch ${(err * 100).toFixed(1)}%`);
   }

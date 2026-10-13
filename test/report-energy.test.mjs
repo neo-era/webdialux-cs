@@ -21,7 +21,7 @@ test("energyIndicators: khớp quy ước DIALux (ca Cầu Bình Triệu 2)", ()
 test("energyIndicators: 1 bên -> nSide=1", () => {
   const e = energyIndicators({ P: 60, spacing: 35, width: 7, Eav: 15, arrangement: "1 bên" });
   assert.equal(e.nSide, 1);
-  assert.ok(Math.abs(e.Wkm - (1000 / 35) * 60) < 1e-6);
+  assert.ok(Math.abs(e.Wkm - Math.ceil(1000 / 35) * 60) < 1e-6, "như DIALux: ⌈1000/S⌉ đèn/km");
 });
 
 test("energyIndicators: thiếu dữ liệu -> null, không vỡ", () => {

@@ -36,7 +36,7 @@ export function selectLowestPassing(geomInput, iesIndex, { MF = 0.8, rfn, q0 = n
   let fallback = null;
   for (const c of cands) {
     try {
-      const r = calcRoad({ ies: c.ph, ...geomInput, MF, ...(q0 ? { q0 } : {}), ...(rfn ? { rfn } : {}) });
+      const r = calcRoad({ ies: c.ph, ...geomInput, MF: geomInput.MF ?? MF, ...(q0 ? { q0 } : {}), ...(rfn ? { rfn } : {}) });
       fallback = { ies: c, r, pass: r.pass }; // đèn công suất lớn nhất đã thử
       if (r.pass) return { ies: c, r, pass: true };
     } catch (_) { /* bỏ ứng viên lỗi */ }
@@ -69,7 +69,7 @@ export function runBatch(rows, iesIndex, opts = {}) {
       const m = matchIES(g.meta, iesIndex);
       if (!m.ies) return { ...base, status: "thiếu IES", reason: m.reason, autoSelect: false };
       try {
-        const r = calcRoad({ ies: m.ies.ph, ...g.input, MF, ...(q0 ? { q0 } : {}), ...(rfn ? { rfn } : {}) });
+        const r = calcRoad({ ies: m.ies.ph, ...g.input, MF: g.input.MF ?? MF, ...(q0 ? { q0 } : {}), ...(rfn ? { rfn } : {}) });
         chosen = { ies: m.ies, r }; note = m.reason;
       } catch (e) {
         return { ...base, status: "lỗi tính", reason: String(e.message || e) };
@@ -125,7 +125,7 @@ export function runBatchRanked(rows, iesIndex, opts = {}) {
     let req = null;
     for (const c of pool) {
       try {
-        const r = calcRoad({ ies: c.ph, ...g.input, MF, ...(q0 ? { q0 } : {}), ...(rfn ? { rfn } : {}) });
+        const r = calcRoad({ ies: c.ph, ...g.input, MF: g.input.MF ?? MF, ...(q0 ? { q0 } : {}), ...(rfn ? { rfn } : {}) });
         req = r.req;
         raw.push({
           iesName: c.name, model: c.model, manufac: c.manufac, power: c.power,

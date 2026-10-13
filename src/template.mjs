@@ -32,10 +32,15 @@ const GROUPS = [
     [COLS.spacing, "Khoảng cách trụ trung bình S (m). Bắt buộc.", 11],
     [COLS.setback, "Từ tim trụ đến mép lòng đường (m) — trụ đứng trên vỉa hè. Điểm sáng vươn vào = vươn − khoảng cách này.", 12],
     [COLS.sidewalk, "Bề rộng vỉa hè mỗi bên (m). Giới hạn dải tính SR = min(5 m, W/2, vỉa hè); vẽ vỉa hè trong phối cảnh 3D. Để trống: SR theo min(5 m, W/2).", 10],
-    [COLS.arrangement, "1 bên / đối xứng / so le.", 12],
+    [COLS.arrangement, "1 bên / đối xứng / so le / giữa (trụ trên dải phân cách, cần đôi — ghi thêm Độ rộng dải phân cách).", 12],
     [COLS.dpc, "có / không — dùng phân cấp (B1/C1 khi có) và vẽ dải phân cách trong 3D.", 10],
     [COLS.medianW, "Bề rộng dải phân cách giữa (m) — để vẽ phối cảnh 3D và mặt bằng. Trống mà có dải → vẽ 2 m.", 11],
     ["Đường kính đầu cần", "Thông tin.", 10],
+  ] },
+  { key: "pose", label: "TƯ THẾ LẮP ĐẶT — TUỲ CHỌN", argb: "FF5B3F99", cols: [
+    [COLS.rot, "Xoay bộ đèn quanh trục đứng (độ), tính theo hướng chiếu của từng đèn — đèn hai bên xoay đối xứng nhau qua tim đường. 0 = chiếu vuông góc vào đường (mặc định).", 9],
+    [COLS.perPole, "Số bộ đèn trên mỗi vị trí (mặc định 1; bố trí 'giữa' tự tính 2 đèn/trụ — ô này là số đèn mỗi phía).", 9],
+    [COLS.mf, "Hệ số bảo trì riêng của tuyến (0–1). Trống = dùng ô MF chung trên app.", 9],
   ] },
   { key: "lum", label: "BỘ ĐÈN — TUỲ CHỌN", argb: "FFB7791F", cols: [
     [COLS.fitting, "Tên đầy đủ bộ đèn. Để trống cả nhóm này → app tự chọn bộ đèn công suất nhỏ nhất vẫn Đạt.", 20],
@@ -48,8 +53,8 @@ const GROUPS = [
 ];
 export const TEMPLATE_HEAD = GROUPS.flatMap((g) => g.cols.map((c) => c[0]));
 
-const NUM1 = new Set([COLS.H, COLS.vuon, COLS.width, COLS.spacing, COLS.setback, COLS.sidewalk, COLS.medianW, "Chiều dài tuyến (m)"]);
-const NUM0 = new Set([COLS.tilt, COLS.lanes, COLS.power, "CCT (K)", "CRI", "SL đèn Sở duyệt (bộ)", "SL đèn trình Sở (bộ)", "STT"]);
+const NUM1 = new Set([COLS.rot, COLS.mf, COLS.H, COLS.vuon, COLS.width, COLS.spacing, COLS.setback, COLS.sidewalk, COLS.medianW, "Chiều dài tuyến (m)"]);
+const NUM0 = new Set([COLS.perPole, COLS.tilt, COLS.lanes, COLS.power, "CCT (K)", "CRI", "SL đèn Sở duyệt (bộ)", "SL đèn trình Sở (bộ)", "STT"]);
 
 const CLASS_DESC = {
   A: "Đường cao tốc đô thị",
@@ -140,9 +145,12 @@ export async function buildTemplateWorkbook(ExcelJS, { version = VERSION } = {})
     showErrorMessage: true, errorStyle: "warning", errorTitle: title, error: "Chọn giá trị trong danh sách.",
   });
   list(COLS.roadClass, Object.keys(QCVN), "Cấp đường");
-  list(COLS.arrangement, ["1 bên", "đối xứng", "so le"], "Cách bố trí trụ");
+  list(COLS.arrangement, ["1 bên", "đối xứng", "so le", "giữa"], "Cách bố trí trụ");
   list(COLS.dpc, ["có", "không"], "Dải phân cách giữa");
   list(COLS.luuluong, ["nhiều", "ít"], "Lưu lượng xe");
+  ws.dataValidations.add(rng(COLS.mf), { type: "decimal", operator: "between", allowBlank: true, formulae: [0.3, 1], showErrorMessage: true, errorStyle: "stop", errorTitle: COLS.mf, error: "MF trong khoảng 0,3–1." });
+  ws.dataValidations.add(rng(COLS.perPole), { type: "whole", operator: "between", allowBlank: true, formulae: [1, 4], showErrorMessage: true, errorStyle: "stop", errorTitle: COLS.perPole, error: "Số nguyên 1–4." });
+  ws.dataValidations.add(rng(COLS.rot), { type: "decimal", operator: "between", allowBlank: true, formulae: [-180, 180], showErrorMessage: true, errorStyle: "stop", errorTitle: COLS.rot, error: "Góc −180…180°." });
   for (const name of [COLS.H, COLS.vuon, COLS.width, COLS.spacing, COLS.setback, COLS.sidewalk, COLS.medianW, COLS.tilt, COLS.lanes]) {
     ws.dataValidations.add(rng(name), {
       type: "decimal", operator: "between", allowBlank: true, formulae: [0, name === COLS.tilt ? 45 : 200],
@@ -207,7 +215,7 @@ export async function buildTemplateWorkbook(ExcelJS, { version = VERSION } = {})
   wh.getCell("B1").value = "HƯỚNG DẪN ĐIỀN DỮ LIỆU — WebDialux-CS"; wh.getCell("B1").font = { bold: true, size: 14, color: { argb: "FF1F4E79" } };
   const lines = [
     "Mỗi dòng ở sheet DU LIEU TUYEN là một tuyến. Giữ nguyên dòng tiêu đề (dòng 1) và tên sheet; xoá 3 dòng mẫu tô vàng trước khi dùng.",
-    "Màu tiêu đề: xám = thông tin tuyến · xanh ngọc = phân cấp đường · xanh đậm = hình học · vàng nâu = bộ đèn (tuỳ chọn). Rê chuột vào tiêu đề để xem giải thích.",
+    "Màu tiêu đề: xám = thông tin tuyến · xanh ngọc = phân cấp đường · xanh đậm = hình học · tím = tư thế lắp đặt (góc xoay, số đèn/trụ, MF riêng) · vàng nâu = bộ đèn (tuỳ chọn). Rê chuột vào tiêu đề để xem giải thích.",
     "Bắt buộc: Độ cao bộ đèn, Độ rộng lòng đường, Khoảng cách trụ TB. Nên có: vươn cần, góc nghiêng, khoảng cách trụ đến mép, cách bố trí, số làn.",
     "Cấp đường: ghi ô Cấp đường (A…E) HOẶC chọn Loại tuyến theo tên QCVN 07; để trống cả hai thì app tự đoán theo hình học.",
     "Độ rộng lòng đường = tổng các làn xe (không gồm dải phân cách). Dải phân cách giữa ghi 'có' + bề rộng để phối cảnh 3D vẽ đúng.",

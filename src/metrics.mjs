@@ -7,12 +7,14 @@ export function stats(values) {
 }
 
 /** Độ đồng đều dọc Ul: với mỗi làn lấy đường tâm làn (theo dọc X), Ul=min/max; trả min qua các làn. */
-export function longitudinalUniformity(Lgrid, grid) {
+export function longitudinalUniformity(Lgrid, grid, laneIndex = null) {
   // Lgrid: mảng 1 chiều theo thứ tự điểm (i dọc * nTrans + j ngang) như buildGrid
+  // laneIndex: chỉ xét tim làn này (EN 13201-3: Ul của observer tính trên tim làn của chính observer đó)
   const { nLong, nTrans, laneCenters, dT } = grid;
   const at = (i, j) => Lgrid[i * nTrans + j];
   let worst = Infinity;
-  for (const yc of laneCenters) {
+  const lines = laneIndex == null ? laneCenters : [laneCenters[laneIndex]];
+  for (const yc of lines) {
     let j = Math.round(yc / dT - 0.5);
     j = Math.max(0, Math.min(nTrans - 1, j));
     let mn = Infinity, mx = -Infinity;
