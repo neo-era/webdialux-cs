@@ -30,7 +30,7 @@ Sai số Eav ≤ 10%; dáng lưới & kết luận hợp lý; chạy ≤ vài gi
 
 - **#2 "ngoại lai 16,5m" — KHÔNG phải lỗi engine.** Báo cáo ghi "single side bottom" (1 bên). Bề rộng bị trích sai: lưới y chỉ lấy được 1 hàng, diện tích m² nằm trong hình vẽ vector không trích được. Trong app thật **bề rộng lấy từ cột Excel** nên không có vấn đề. Bố trí 2 bên/so le engine đã hỗ trợ sẵn (`arrangement`).
 - **#3 Lav đèn 100W lệch ~8–10% — chủ yếu do đoán số làn.** Độ rọi khớp ±1%; Lav mặt đường = observer xấu nhất, phụ thuộc **số làn** (em đang đoán round(W/3,5)). Vị trí observer khác DIALux → lệch. App thật lấy số làn từ cột Excel. Phần nhỏ còn lại do biến thể IES (PD24 vs PD23 trong báo cáo).
-- **#1 TI — lỗi thật của engine (để vòng sau).** Lv theo Stiles–Holladay (10·ΣE/θ²) cho TI thấp hơn DIALux, mức lệch **tương quan với độ nghiêng đèn** (60W nghiêng 15° lệch ~2,5×; 100W ít nghiêng ~khớp). Cần mô hình chói mất khả năng theo **CIE 146** đầy đủ. Không ràng buộc (biên rộng: 11 so với ngưỡng 20).
+- **#1 TI — ĐÃ SỬA ở v2.6:** tính theo EN 13201-3 (Lv, Lav ở trạng thái ban đầu; độ rọi tại mắt × cosθ; người quan sát dời trong 1 khoảng cột, lấy max; đèn phía trước 500 m) → khớp 15/16 observer của 7 tuyến DIALux test2 (lệch ≤ 1 %). Ghi chú cũ: Lv theo Stiles–Holladay (10·ΣE/θ²) cho TI thấp hơn DIALux, mức lệch **tương quan với độ nghiêng đèn** (60W nghiêng 15° lệch ~2,5×; 100W ít nghiêng ~khớp). Cần mô hình chói mất khả năng theo **CIE 146** đầy đủ. Không ràng buộc (biên rộng: 11 so với ngưỡng 20).
 
 → Lõi engine chốt ở mức: **độ rọi ~4%, độ chói Lav/Uo khớp DIALux** khi hình học đúng. #2/#3 tự hết khi chạy từ dữ liệu Excel; #1 là mục cải tiến có chủ đích.
 
@@ -41,3 +41,17 @@ node --test              # 11/11 pass
 node cli.mjs <file.ies> --H 7.5 --overhang 1 --spacing 35 --width 7 --tilt 15 --class D1
 ```
 Bộ test đối chiếu DIALux: `test/engine.test.mjs`. Dữ liệu 14 ca: `data/dialux_cases.json`.
+
+## Đối chiếu 7 tuyến DIALux "test2" (13/10/2026, v2.6) — test cố định `test/v25.test.mjs`
+
+| Tuyến | Ltb D/A | Uo D/A | Ul D/A | TI D/A | REI D/A | W/km |
+|---|---|---|---|---|---|---|
+| Cầu Bình Triệu 2 | 1,65/1,64 | 0,75/0,75 | 0,90/0,91 | 9/9 | 0,56/0,56 | khớp |
+| Đường dẫn cầu Bình Triệu | 1,58/1,58 | 0,61/0,62 | 0,82/0,83 | 8/9 | 0,58/0,58 | khớp |
+| Vành Đai KCX Linh Trung 2 | 1,72/1,71 | 0,43/0,43 | 0,85/0,85 | 9/9 | 0,38/0,38 | khớp |
+| Phan Huy Chú | 1,67/1,68 | 0,56/0,56 | 0,75/0,76 | 10/10 | 0,58/0,58 | khớp |
+| Nguyễn Trường Tộ | 1,62/1,63 | 0,52/0,52 | 0,68/0,70 | 11/11 | 0,67/0,67 | khớp |
+| Đồng Tiến | 1,67/1,68 | 0,56/0,56 | 0,75/0,76 | 10/10 | 0,58/0,58 | khớp |
+| Độc Lập | 1,67/1,67 | 0,54/0,54 | 0,72/0,73 | 11/11 | 0,67/0,67 | khớp |
+
+Quy ước DIALux rút ra: lưới 3 điểm ngang/làn; REI từng mép, dải = bề rộng làn; W/km = round(1000/S); TI ở trạng thái ban đầu, observer dời. Còn lại: Ul tuyến 1 bên cao 9 m lệch +0,01…0,02.

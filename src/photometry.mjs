@@ -65,3 +65,34 @@ export function thresholdIncrement(lums, I, observer, Lav, MF) {
   else if (Lav > 5) TI = 95 * Lv / Math.pow(Lav, 1.05);
   return { Lv, TI };
 }
+
+/**
+ * TI theo EN 13201-3 / CIE 140 như DIALux: tính với trạng thái BAN ĐẦU (Lv không nhân MF, Lav ban đầu = Lav duy trì / MF),
+ * độ rọi trên mặt phẳng vuông góc hướng nhìn (× cosθ), đèn phía trước tới ~500 m, người quan sát dời dọc
+ * trong một khoảng cột (bước = lưới dọc) và lấy TI lớn nhất. Đối chiếu 16 observer DIALux: 15/16 khớp số nguyên.
+ */
+export function thresholdIncrementMoving(lums, I, observer, LavMaint, MF, spacing, steps = 12) {
+  const look = { x: Math.cos(1 * DEG), z: -Math.sin(1 * DEG) };
+  const Lav = LavMaint / (MF || 1);
+  let best = { Lv: 0, TI: 0 };
+  for (let s = 0; s < steps; s++) {
+    const eye = { x: observer.x + s * spacing / steps, y: observer.y, z: observer.z };
+    let Lv = 0;
+    for (const L of lums) {
+      const dx = L.x - eye.x, dy = L.y - eye.y, dz = L.H - eye.z;
+      if (dx <= 0) continue;
+      const d = Math.sqrt(dx * dx + dy * dy + dz * dz);
+      const cos = (dx * look.x + dz * look.z) / d;
+      const theta = Math.acos(Math.max(-1, Math.min(1, cos))) / DEG;
+      if (theta < 1.5 || theta > 60) continue;
+      const { C, gamma } = angleLumToPoint(L, eye);
+      if (gamma >= 90) continue;
+      Lv += 10 * (I(C, gamma) * cos / (d * d)) / (theta * theta);
+    }
+    let TI = 0;
+    if (Lav >= 0.05 && Lav <= 5) TI = 65 * Lv / Math.pow(Lav, 0.8);
+    else if (Lav > 5) TI = 95 * Lv / Math.pow(Lav, 1.05);
+    if (TI > best.TI) best = { Lv, TI };
+  }
+  return best;
+}

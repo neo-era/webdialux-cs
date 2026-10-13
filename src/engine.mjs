@@ -1,7 +1,7 @@
 // Engine: ghép hình học + photometry + metrics cho 1 tuyến/phương án.
 import { makeIntensity } from "./ies.mjs";
 import { buildLuminaires, buildGrid, buildObservers, angleLumToPoint } from "./geometry.mjs";
-import { illuminanceAtPoint, luminanceAtPoint, thresholdIncrement } from "./photometry.mjs";
+import { illuminanceAtPoint, luminanceAtPoint, thresholdIncrementMoving } from "./photometry.mjs";
 import { stats, longitudinalUniformity } from "./metrics.mjs";
 import { makeRTableFromData, scaleRTable } from "./rtable.mjs";
 import R3DATA from "./r3data.mjs";
@@ -25,6 +25,7 @@ function avgE(points, lums, I, MF) {
 }
 
 export function calcRoad(input) {
+  if (!(input.spacing > 0) || !Number.isFinite(input.spacing)) throw new Error("Khoảng cột phải là số dương");
   const {
     ies, H, overhang, spacing, width, lanes = 2, arrangement = "1 bên",
     tilt = 0, MF = 0.8, roadClass = "D1", spanWindow = 5,
@@ -37,6 +38,7 @@ export function calcRoad(input) {
   const g = { H, overhang, spacing, width, lanes, arrangement, tilt, spanWindow, rot: rot || 0, perPole: perPole || 1 };
   const I = makeIntensity(ies);
   const lums = buildLuminaires(g);
+  const lumsTI = buildLuminaires({ ...g, spanWindow: Math.min(2000, Math.max(spanWindow, Math.ceil(500 / spacing))) }); // đèn phía trước ~500 m cho TI
   const grid = buildGrid(g);
   const observers = buildObservers(g, grid);
 
@@ -49,7 +51,7 @@ export function calcRoad(input) {
     const Lvals = grid.points.map((P) => luminanceAtPoint(P, lums, I, rfn, obs, MF));
     const s = stats(Lvals);
     const Ul = longitudinalUniformity(Lvals, grid, k);   // observer k đứng trên tim làn k
-    const { Lv, TI } = thresholdIncrement(lums, I, obs, s.avg, MF);
+    const { Lv, TI } = thresholdIncrementMoving(lumsTI, I, obs, s.avg, MF, spacing, grid.nLong);
     const out = { pos: obs, Lav: s.avg, Uo: s.min / s.avg, Ul, Lmin: s.min, Lmax: s.max, Lv, TI };
     if (detail) out.Lvals = Lvals;
     return out;
@@ -80,9 +82,9 @@ export function calcRoad(input) {
   // SR (QCVN 07-7 / CIE 140): cộng hai mép; dải = min(5 m, nửa lòng đường, vỉa hè có sẵn)
   const sw = Math.min(5, W / 2, sidewalk > 0 ? sidewalk : Infinity);
   const SR = (sampleStrip(-sw, 0) + sampleStrip(W, W + sw)) / (sampleStrip(0, sw) + sampleStrip(W - sw, W));
-  // REI (EN 13201-2:2015, như DIALux): từng mép riêng, lấy mép xấu hơn; dải = min(5 m, bề rộng làn, vỉa hè)
-  // — đối chiếu DIALux Cầu Bình Triệu 2: dải 13/3 = 4,33 m → 0,56.
-  const rw = Math.min(5, W / Math.max(1, lanes), W / 2, sidewalk > 0 ? sidewalk : Infinity);
+  // REI (EN 13201-2:2015, như DIALux): từng mép riêng, lấy mép xấu hơn; dải = bề rộng làn (giới hạn bởi vỉa hè)
+  // — đối chiếu 7 tuyến DIALux: khớp cả 7 (vd làn 7 m → 0,38; làn 4,33 m → 0,56).
+  const rw = Math.min(grid.laneWidth, W / 2, sidewalk > 0 ? sidewalk : Infinity);
   const srL = sampleStrip(-rw, 0) / sampleStrip(0, rw);
   const srR = sampleStrip(W, W + rw) / sampleStrip(W - rw, W);
   road.REI = Math.min(srL, srR);

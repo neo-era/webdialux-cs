@@ -639,7 +639,7 @@ function newPage(doc, d) {
 }
 
 /** Đóng tài liệu: chân trang © + "Trang i/N" cho MỌI trang (gọi 1 lần sau khi render xong). */
-export function finalizeDoc(doc, { tail = "engine CIE 140 · bảng R3 CIE · TI theo Stiles-Holladay (xấp xỉ)" } = {}) {
+export function finalizeDoc(doc, { tail = "engine CIE 140 · bảng R3 CIE · TI theo EN 13201-3 (giá trị ban đầu)" } = {}) {
   const n = doc.getNumberOfPages();
   for (let i = 1; i <= n; i++) {
     doc.setPage(i);

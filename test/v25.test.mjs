@@ -30,7 +30,7 @@ test("Lưới tính: đúng 3 điểm ngang mỗi làn (EN 13201-3), không ép 
   assert.equal(buildGrid({ spacing: 35, width: 13, lanes: 3 }).nTrans, 9);
 });
 
-test("REI (EN 13201-2:2015): dải mép rộng min(5, bề rộng làn, vỉa hè) — Cầu Bình Triệu 2 ra 0,56 như DIALux", () => {
+test("REI (EN 13201-2:2015): dải mép = bề rộng làn (giới hạn bởi vỉa hè) — Cầu Bình Triệu 2 ra 0,56 như DIALux", () => {
   const r = calcRoad(BT2);
   assert.ok(Math.abs(r.reiWidth - 13 / 3) < 1e-9, `dải ${r.reiWidth}`);
   assert.equal(Math.round(r.road.REI * 100) / 100, 0.56, `REI ${r.road.REI.toFixed(3)}`);
@@ -69,4 +69,36 @@ test("Số làn lẻ (2,5) được làm tròn: lưới nguyên, Ul không lệc
   const g = buildGrid({ spacing: 35, width: 13, lanes: 2.5 });
   assert.ok(Number.isInteger(g.nTrans) && g.laneCenters.length * 3 === g.nTrans);
   assert.equal(energyIndicators({ P: 50, spacing: 2500, width: 7, Eav: 5, arrangement: "1 bên" }).Wkm, 50);
+});
+
+// ---------- Đối chiếu 7 tuyến DIALux (báo cáo test2, MF 0,80, R3 q0 0,08) ----------
+const SL90 = parseIES(readFileSync(join(here, "fixtures/SL-90W.ies"), "utf8"));
+const SL150 = parseIES(readFileSync(join(here, "fixtures/SL-150W.ies"), "utf8"));
+const ROUTES = [
+  ["Cầu Bình Triệu 2", SL, 73.5, { spacing: 35, H: 10.5, overhang: 0, tilt: 15, width: 13, lanes: 3, arrangement: "đối xứng" }, { Lav: 1.65, Uo: .75, Ul: .90, TI: 9, REI: .56, Eav: 22.4, Wkm: 4263, obsTI: [8, 9, 8] }],
+  ["Đường dẫn cầu Bình Triệu", SL90, 92.8, { spacing: 42, H: 11.5, overhang: 0.5, tilt: 0, width: 16, lanes: 3, arrangement: "đối xứng" }, { Lav: 1.58, Uo: .61, Ul: .82, TI: 8, REI: .58, Eav: 21.1, Wkm: 4454.4, obsTI: [8, 8, 8] }],
+  ["Vành Đai KCX Linh Trung 2", SL150, 154, { spacing: 34, H: 12.5, overhang: 1, tilt: 5, width: 14, lanes: 2, arrangement: "1 bên" }, { Lav: 1.72, Uo: .43, Ul: .85, TI: 9, REI: .38, Eav: 24.0, Wkm: 4466, obsTI: [9, 5] }],
+  ["Phan Huy Chú", SL90, 92.8, { spacing: 35, H: 9, overhang: 1, tilt: 5, width: 7, lanes: 2, arrangement: "1 bên" }, { Lav: 1.67, Uo: .56, Ul: .75, TI: 10, REI: .58, Eav: 21.1, Wkm: 2691.2, obsTI: [10, 9] }],
+  ["Đồng Tiến", SL90, 92.8, { spacing: 35, H: 9, overhang: 1, tilt: 5, width: 7, lanes: 2, arrangement: "1 bên" }, { Lav: 1.67, Uo: .56, Ul: .75, TI: 10, REI: .58, Eav: 21.1, Wkm: 2691.2, obsTI: [10, 9] }],
+  ["Nguyễn Trường Tộ", SL90, 92.8, { spacing: 37, H: 9, overhang: 1, tilt: 0, width: 7, lanes: 2, arrangement: "1 bên" }, { Lav: 1.62, Uo: .52, Ul: .68, TI: 11, REI: .67, Eav: 20.5, Wkm: 2505.6, obsTI: [11, 9] }],
+  ["Độc Lập", SL90, 92.8, { spacing: 36, H: 9, overhang: 1, tilt: 0, width: 7, lanes: 2, arrangement: "1 bên" }, { Lav: 1.67, Uo: .54, Ul: .72, TI: 11, REI: .67, Eav: 21.1, Wkm: 2598.4, obsTI: [11, 9] }],
+];
+for (const [name, ies, P, g, D] of ROUTES) {
+  test(`DIALux 7 tuyến — ${name}: Ltb/Uo ±0,02, Ul ±0,03, TI ±1, REI ±0,01, Eav ±1%, W/km đúng`, () => {
+    const r = calcRoad({ ies, ...g, MF: 0.8, q0: 0.08, roadClass: "C2" });
+    assert.ok(Math.abs(r.road.Lav - D.Lav) <= 0.02, `Lav ${r.road.Lav.toFixed(3)} vs ${D.Lav}`);
+    assert.ok(Math.abs(r.road.Uo - D.Uo) <= 0.02, `Uo ${r.road.Uo.toFixed(3)} vs ${D.Uo}`);
+    assert.ok(Math.abs(r.road.Ul - D.Ul) <= 0.03, `Ul ${r.road.Ul.toFixed(3)} vs ${D.Ul}`);   // còn lệch +0,01…0,02 ở tuyến 1 bên 9 m
+    assert.ok(Math.abs(Math.round(r.road.TI) - D.TI) <= 1, `TI ${r.road.TI.toFixed(2)} vs ${D.TI}`);
+    r.observers.forEach((o, k) => assert.ok(Math.abs(o.TI - D.obsTI[k]) <= 1, `TI obs${k + 1} ${o.TI.toFixed(2)} vs ${D.obsTI[k]}`));
+    assert.ok(Math.abs(r.road.REI - D.REI) <= 0.01, `REI ${r.road.REI.toFixed(3)} vs ${D.REI}`);
+    assert.ok(Math.abs(r.E.avg - D.Eav) / D.Eav <= 0.01, `Eav ${r.E.avg.toFixed(2)} vs ${D.Eav}`);
+    const e = energyIndicators({ P, spacing: g.spacing, width: g.width, Eav: r.E.avg, arrangement: g.arrangement });
+    assert.ok(Math.abs(e.Wkm - D.Wkm) < 0.05, `W/km ${e.Wkm}`);
+  });
+}
+
+test("Khoảng cột 0 / thiếu → báo lỗi ngay, không treo", () => {
+  assert.throws(() => calcRoad({ ...BT2, spacing: 0 }), /Khoảng cột/);
+  assert.throws(() => calcRoad({ ...BT2, spacing: null }), /Khoảng cột/);
 });

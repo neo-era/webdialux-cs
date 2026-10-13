@@ -72,6 +72,7 @@ export function rowToGeometry(row) {
   if (H == null) w.push("thiếu Độ cao H");
   if (width == null) w.push("thiếu Độ rộng lòng đường");
   if (spacing == null) w.push("thiếu Khoảng cách trụ");
+  else if (!(spacing > 0)) w.push("Khoảng cách trụ phải > 0");
   if (!lanes || lanes < 1) { lanes = Math.max(1, Math.round((width || 7) / 3.5)); w.push("ước lượng số làn"); }
 
   // Cấp đường — thứ tự ưu tiên:
