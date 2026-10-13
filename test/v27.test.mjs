@@ -114,3 +114,74 @@ test("Excel mẫu khu vực có sheet DEN TREN TRU với ví dụ trụ nhiều 
   assert.ok(ws && ws.rowCount >= 3);
   assert.deepEqual(ws.getRow(1).values.slice(1), LAMP_HEAD);
 });
+
+// ---------- mẫu công viên + phối cảnh 3D ----------
+import { SAMPLES, sampleState } from "../src/areaSamples.mjs";
+import { makeProjector, defaultCamera, drawArea3D } from "../src/areaView3D.mjs";
+
+test("Mẫu công viên: 4 vùng theo Bảng 7 TCVN 13608:2023, trụ nhiều đèn, ĐẠT cả 4 vùng với bộ đèn 70/90 W", () => {
+  const idx2 = buildIesIndex([{ name: "242AEE3-NHB-SL-70W_IESNA2002.IES", text: txt70 }, { name: "238AEE3-NHB-SL-90W_IESNA2002.IES", text: readFileSync(join(here, "fixtures/SL-90W.ies"), "utf8") }]);
+  const s = sampleState("congvien", idx2);
+  assert.deepEqual(s.areas.map((a) => a.req.id), ["TCVN13608-B7-I-cv-congchinh", "TCVN13608-B7-I-cv-truc", "TCVN13608-B7-I-cv-nhanh", "TCVN13608-B7-I-cv-santhoatdong"]);
+  assert.ok(s.poles.some((p) => p.lamps.length >= 2), "có trụ nhiều đèn");
+  assert.deepEqual(s.warnings, [], "khớp đúng tên IES thư viện");
+  const r = calcArea(s, { MF: 0.8 });
+  for (const a of r.areas) assert.ok(a.pass, `${a.name}: Eav ${a.Eav.toFixed(1)} < ${a.req.Eav}`);
+});
+
+test("Mẫu: thư viện không có IES đúng tên → dùng bộ đèn đầu tiên và cảnh báo; không có IES nào → cảnh báo chọn thư mục", () => {
+  const s = sampleState("congvien", idx);
+  assert.ok(s.poles.every((p) => p.lamps.every((l) => l.ies)));
+  assert.equal(s.warnings.length, 1);
+  assert.match(sampleState("quangtruong", []).warnings[0], /thư mục IES/);
+  for (const k of Object.keys(SAMPLES)) assert.ok(sampleState(k, idx).areas.length >= 1, k);
+});
+
+test("Excel mẫu công viên ghi đủ trụ, đèn, vùng; đọc lại tính ra đúng như mẫu", async () => {
+  const s = sampleState("congvien", idx);
+  const wb = await buildAreaTemplate(ExcelJS, { sample: sampleState("congvien", []) });
+  const x = XLSX.read(await wb.xlsx.writeBuffer());
+  const rd = (n) => XLSX.utils.sheet_to_json(x.Sheets[n], { defval: null });
+  assert.equal(rd("DEN TREN TRU").length, s.poles.reduce((n, p) => n + p.lamps.length, 0));
+  const back = parseAreaRows({ poleRows: rd("VI TRI TRU"), areaRows: rd("VUNG TINH"), lampRows: rd("DEN TREN TRU") }, idx);
+  assert.equal(back.poles.length, s.poles.length); assert.equal(back.areas.length, 4);
+  assert.ok(back.areas.every((a) => a.req && a.req.id.startsWith("TCVN13608-B7")));
+});
+
+test("3D: phép chiếu — tâm khu vực ở giữa khung, điểm cao hơn nằm trên, điểm sau camera bị loại", () => {
+  const cam = { tx: 0, ty: 0, az: -60, el: 30, dist: 50 };
+  const pr = makeProjector(cam, 1000, 600);
+  const c = pr.P(0, 0, 0); assert.ok(Math.abs(c[0] - 500) < 1 && Math.abs(c[1] - 312) < 1, `${c}`);
+  assert.ok(pr.P(0, 0, 10)[1] < c[1], "điểm cao 10 m nằm phía trên");
+  const back = [pr.C[0] - (0 - pr.C[0]) * 0.5, pr.C[1] - (0 - pr.C[1]) * 0.5, pr.C[2]];
+  assert.equal(pr.P(...back), null);
+});
+
+test("3D: vẽ được trên canvas (công viên mẫu), vùng sáng hơn nền tối", async () => {
+  const { createCanvas } = await import("@napi-rs/canvas");
+  const s = sampleState("congvien", idx), r = calcArea(s, { MF: 0.8 });
+  const cv = createCanvas(900, 500), ctx = cv.getContext("2d");
+  const out = drawArea3D(ctx, 900, 500, { ...s, result: r }, { cam: defaultCamera(s.poles, s.areas) });
+  assert.ok(out.range[1] > out.range[0]);
+  const d = ctx.getImageData(0, 0, 900, 500).data; let bright = 0;
+  for (let i = 0; i < d.length; i += 4) if (d[i] + d[i + 1] + d[i + 2] > 450) bright++;
+  assert.ok(bright > 500, `điểm sáng ${bright}`);
+});
+
+test("3D: cắt theo mặt phẳng gần — đa giác vắt qua sau lưng camera vẫn vẽ phần phía trước", () => {
+  const pr = makeProjector({ tx: 0, ty: 0, az: -60, el: 30, dist: 20 }, 800, 500);
+  const big = [[-500, -500], [500, -500], [500, 500], [-500, 500]];
+  assert.ok(big.some(([x, y]) => pr.P(x, y) === null), "có đỉnh sau camera");
+  const s = pr.poly(big.map(([x, y]) => [x, y, 0]));
+  assert.ok(s && s.length >= 3 && s.every((q) => isFinite(q[0]) && isFinite(q[1])));
+  const ax = Math.cos(-60 * Math.PI / 180), ay = Math.sin(-60 * Math.PI / 180), z = pr.C[2] + 50;
+  const behind = [[pr.C[0] - 100 * ax - 10 * ay, pr.C[1] - 100 * ay + 10 * ax, z], [pr.C[0] - 100 * ax + 10 * ay, pr.C[1] - 100 * ay - 10 * ax, z], [pr.C[0] - 120 * ax, pr.C[1] - 120 * ay, z]];
+  assert.equal(pr.poly(behind), null, "hoàn toàn sau camera → null");
+});
+
+test("3D: kết quả mọi vùng rỗng → thang màu [0,0], không Infinity", async () => {
+  const { createCanvas } = await import("@napi-rs/canvas");
+  const cv = createCanvas(300, 200);
+  const r = calcArea({ poles: [], areas: [{ name: "x", x0: 0, y0: 0, L: 0, W: 5 }] });
+  assert.deepEqual(drawArea3D(cv.getContext("2d"), 300, 200, { poles: [], areas: [], result: r }).range, [0, 0]);
+});

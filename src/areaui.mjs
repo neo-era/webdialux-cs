@@ -3,6 +3,8 @@
 import { calcArea, parseAreaRows, buildAreaWorkbook, buildAreaTemplate, matchAreaIes, poleLamps, spreadLamps } from "./area.mjs";
 import { AREA_REQS, findReq } from "./areaReq.mjs";
 import { drawAreaPlan, heatColor, lampHandle } from "./areaDraw.mjs";
+import { drawArea3D, defaultCamera, rampCss } from "./areaView3D.mjs";
+import { SAMPLES, sampleState } from "./areaSamples.mjs";
 
 const CSS = `
 #areaView{padding:12px 0}
@@ -35,6 +37,11 @@ body.area .wrap{max-width:min(1680px,100%)}
 #areaView .legend .bar{width:160px;height:9px;border-radius:3px}
 #areaView .tabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px}
 #areaView .tabs button{font-size:12.5px;padding:5px 10px}
+#areaView .vtabs{display:inline-flex;border:1px solid var(--line);border-radius:8px;overflow:hidden;margin-bottom:8px}
+#areaView .vtabs button{border:none;border-radius:0;font-size:12.5px;padding:6px 12px}
+#areaView .vtabs button.on{background:var(--accent);color:var(--accent-ink)}
+#areaView .vbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+#areaView .vbar .hint{margin:0 0 8px}
 #areaView .tabs button.on{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
 #areaView .warn{font-size:12px;color:var(--warn);margin:8px 0 0;padding-left:18px}
 #areaView .hint{font-size:12px;color:var(--muted);margin:8px 0 0}
@@ -64,7 +71,7 @@ const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<
 
 export function initAreaUI({ root, setStatus, getIes: getIesAll, getMF, saveXlsxBuffer, outName, getPdfTools }) {
   const getIes = () => getIesAll().filter((e) => !e.ph || e.ph.photometricType === 1);   // chỉ trắc quang loại C
-  const st = { poles: [], areas: [], result: null, sel: null, selLamp: null, areaIx: 0, warnings: [], name: "" };
+  const st = { poles: [], areas: [], result: null, sel: null, selLamp: null, areaIx: 0, warnings: [], name: "", view3d: false, cam: null };
   const shortIes = (l) => l.ies ? l.ies.name.replace(/\.ies$/i, "").replace(/_IESNA2002$/i, "") : (l.iesWant ? l.iesWant + " (thiếu)" : "thiếu IES");
   const iesSummary = (p) => { const m = new Map(); for (const l of poleLamps(p)) { const k = shortIes(l); m.set(k, (m.get(k) || 0) + 1); } return [...m].map(([k, n]) => n > 1 ? `${k} ×${n}` : k).join(", "); };
   const newLamp = (o = {}) => ({ aim: 90, tilt: 30, arm: 0, H: null, ies: getIes()[0] || null, iesWant: (getIes()[0] || {}).name || "", ...o });
@@ -122,9 +129,8 @@ export function initAreaUI({ root, setStatus, getIes: getIesAll, getMF, saveXlsx
     if (!st.poles.length && !st.areas.length) {
       root.innerHTML = `<div class="card empty"><h3 style="margin-bottom:8px">Chế độ khu vực tự do — sân thể thao, công viên, quảng trường, bãi đỗ xe</h3>
         <p>Chọn file Excel có sheet <b>VI TRI TRU</b> và <b>VUNG TINH</b> (☰ Menu → <i>Tải Excel mẫu khu vực</i>), hoặc bắt đầu từ sân mẫu rồi sửa trực tiếp.</p>
-        <div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap"><button id="avSample" class="primary">Sân bóng mẫu 40 × 20 m</button><button id="avSample2">Quảng trường mẫu (trụ 4 đèn)</button></div></div>`;
-      root.querySelector("#avSample").onclick = () => loadSample();
-      root.querySelector("#avSample2").onclick = () => loadSample("plaza");
+        <div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap">${Object.entries(SAMPLES).map(([k, S], i) => `<button data-sample="${k}"${i ? "" : ' class="primary"'}>${esc(S.label)}</button>`).join("")}</div></div>`;
+      root.querySelectorAll("[data-sample]").forEach((b) => b.onclick = () => loadSample(b.dataset.sample));
       return;
     }
     const ies = getIes();
@@ -167,6 +173,8 @@ export function initAreaUI({ root, setStatus, getIes: getIesAll, getMF, saveXlsx
         ${st.warnings.length ? `<ul class="warn">${st.warnings.map((w) => `<li>${esc(w)}</li>`).join("")}</ul>` : ""}
       </div>
       <div>
+        <div class="vbar"><div class="vtabs" role="tablist" aria-label="Kiểu xem"><button id="avV2" role="tab" class="${st.view3d ? "" : "on"}">Mặt bằng</button><button id="avV3" role="tab" class="${st.view3d ? "on" : ""}">Phối cảnh 3D</button></div>
+          <p class="hint">${st.view3d ? "Kéo để xoay · lăn chuột / chụm 2 ngón để phóng to · bấm đúp để về góc nhìn mặc định." : ""}</p></div>
         <div class="tabs" id="avTabs"></div>
         <div class="kpis" id="avKpis"></div>
         <div class="card plan"><canvas id="avCanvas" width="1200" height="760" aria-label="Mặt bằng bố trí trụ đèn và độ rọi"></canvas></div>
@@ -217,6 +225,8 @@ export function initAreaUI({ root, setStatus, getIes: getIesAll, getMF, saveXlsx
       const p = st.poles.find((q) => q.id === st.sel); if (!p) return;
       const id = nextId(); st.poles.push({ ...p, id, x: p.x + 3, y: p.y + 3, lamps: copyLamps(poleLamps(p)) }); st.sel = id; st.selLamp = null; render();
     };
+    root.querySelector("#avV2").onclick = () => { if (st.view3d) { st.view3d = false; render(); } };
+    root.querySelector("#avV3").onclick = () => { if (!st.view3d) { st.view3d = true; render(); } };
     root.querySelector("#avAddA").onclick = () => { st.areas.push({ name: `Vùng ${st.areas.length + 1}`, x0: 0, y0: 0, L: 20, W: 10, step: null, req: null, MF: null, poly: null }); render(); };
     bindCanvas();
   }
@@ -278,10 +288,14 @@ export function initAreaUI({ root, setStatus, getIes: getIesAll, getMF, saveXlsx
     const dpr = Math.min(3, window.devicePixelRatio || 1), cssW = cv.clientWidth || 600;
     const w = Math.round(cssW * dpr), h = Math.round(cssW * 0.62 * dpr);
     if (cv.width !== w || cv.height !== h) { cv.width = w; cv.height = h; }   // vẽ đúng độ phân giải màn hình → chữ rõ
-    view = drawAreaPlan(cv.getContext("2d"), cv.width, cv.height, st, { sel: st.sel, selLamp: st.selLamp, colors: colors(), px: dpr, bounds: dragBounds });
+    if (st.view3d) {
+      if (!st.cam) st.cam = defaultCamera(st.poles, st.areas);
+      const v3 = drawArea3D(cv.getContext("2d"), cv.width, cv.height, st, { cam: st.cam, px: dpr, fast: !!st.orbiting });
+      view = { range: v3.range, three: true };
+    } else view = drawAreaPlan(cv.getContext("2d"), cv.width, cv.height, st, { sel: st.sel, selLamp: st.selLamp, colors: colors(), px: dpr, bounds: dragBounds });
     const lg = root.querySelector("#avLegend");
     if (lg && st.result) {
-      const [lo, hi] = view.range, grad = [0, .25, .5, .75, 1].map((t) => `rgb(${heatColor(t).join(",")}) ${t * 100}%`).join(",");
+      const [lo, hi] = view.range, grad = view.three ? rampCss() : [0, .25, .5, .75, 1].map((t) => `rgb(${heatColor(t).join(",")}) ${t * 100}%`).join(",");
       lg.innerHTML = `<span class="bar" style="background:linear-gradient(90deg,${grad})"></span><span>${f1(lo, 0)} – ${f1(hi, 0)} lx</span><span>· độ rọi ngang duy trì · công suất ${f1(st.result.power / 1000, 2)} kW</span>`;
     }
   }
@@ -319,13 +333,28 @@ export function initAreaUI({ root, setStatus, getIes: getIesAll, getMF, saveXlsx
       }
       return best;
     };
+    let orbit = null, raf = 0; const touches = new Map();
+    const frame = () => { if (raf) return; raf = requestAnimationFrame(() => { raf = 0; drawPlan(); }); };   // gộp sự kiện, 1 lần vẽ / khung hình
+    cv.onwheel = (e) => { if (!st.view3d || !st.cam) return; e.preventDefault(); st.cam.dist = Math.max(5, Math.min(2000, st.cam.dist * Math.exp(e.deltaY * 0.0012))); frame(); };
+    cv.ondblclick = () => { if (st.view3d) { st.cam = defaultCamera(st.poles, st.areas); drawPlan(); } };
     cv.onpointerdown = (e) => {
+      if (st.view3d) {
+        touches.set(e.pointerId, [e.clientX, e.clientY]); cv.setPointerCapture(e.pointerId);
+        orbit = { x: e.clientX, y: e.clientY, az: st.cam.az, el: st.cam.el, dist: st.cam.dist, pinch: touches.size === 2 ? (([a, b2]) => Math.hypot(a[0] - b2[0], a[1] - b2[1]))([...touches.values()]) : null };
+        return;
+      }
       const [px, py] = pt(e), h = hit(px, py);
       if (!h) { if (st.sel) select(null); return; }
       select(h.p.id, h.mode === "aim" ? h.li : (st.sel === h.p.id ? st.selLamp : null));
       drag = h; dragBounds = view.bounds; cv.setPointerCapture(e.pointerId); drawPlan();
     };
     cv.onpointermove = (e) => {
+      if (st.view3d) {
+        if (!orbit) return; touches.set(e.pointerId, [e.clientX, e.clientY]);
+        if (touches.size === 2 && orbit.pinch) { const [a, b2] = [...touches.values()], d = Math.hypot(a[0] - b2[0], a[1] - b2[1]); st.cam.dist = Math.max(5, Math.min(2000, orbit.dist * orbit.pinch / Math.max(1, d))); }
+        else { st.cam.az = orbit.az - (e.clientX - orbit.x) * 0.4; st.cam.el = Math.max(8, Math.min(85, orbit.el + (e.clientY - orbit.y) * 0.3)); }
+        st.orbiting = true; frame(); return;
+      }
       const [px, py] = pt(e);
       if (!drag) { const h = view && hit(px, py); cv.style.cursor = h ? (h.mode === "aim" ? "crosshair" : "grab") : "default"; return; }
       const [wx, wy] = view.toWorld(px, py), p = drag.p;
@@ -342,12 +371,18 @@ export function initAreaUI({ root, setStatus, getIes: getIesAll, getMF, saveXlsx
       if (tr) { tr.querySelector('[data-k="x"]').value = p.x; tr.querySelector('[data-k="y"]').value = p.y; }
       recalc();
     };
-    cv.onpointerup = cv.onpointercancel = cv.onlostpointercapture = () => { if (drag) { drag = null; dragBounds = null; recalc(true); } };
+    cv.onpointerup = cv.onpointercancel = cv.onlostpointercapture = (e) => {
+      if (st.view3d) {
+        touches.delete(e && e.pointerId);
+        if (!touches.size) { orbit = null; if (st.orbiting) { st.orbiting = false; frame(); } }
+        else if (touches.size === 1 && orbit) { const [q] = touches.values(); orbit = { x: q[0], y: q[1], az: st.cam.az, el: st.cam.el, dist: st.cam.dist, pinch: null }; }   // còn 1 ngón: tính lại gốc, không nhảy
+        return;
+      } if (drag) { drag = null; dragBounds = null; recalc(true); } };
   }
 
   // ---------- nạp dữ liệu ----------
   function loadState(s, name) {
-    st.poles = s.poles.map((p) => ({ ...p, lamps: copyLamps(poleLamps(p)) })); st.areas = s.areas; st.warnings = s.warnings || []; st.name = name || ""; st.sel = null; st.selLamp = null; st.areaIx = 0;
+    st.poles = s.poles.map((p) => ({ ...p, lamps: copyLamps(poleLamps(p)) })); st.areas = s.areas; st.warnings = s.warnings || []; st.name = name || ""; st.sel = null; st.selLamp = null; st.areaIx = 0; st.cam = null;
     render();
     setStatus(`Khu vực: ${st.poles.length} trụ, ${st.areas.length} vùng${st.warnings.length ? ` · ${st.warnings.length} cảnh báo` : ""}. ${getIes().length ? "Kéo trụ hoặc sửa bảng — kết quả tự tính lại." : "Chọn thư mục IES để tính."}`, st.warnings.length > 0);
   }
@@ -356,23 +391,10 @@ export function initAreaUI({ root, setStatus, getIes: getIesAll, getMF, saveXlsx
     const rd = (n) => wb.SheetNames.includes(n) ? XLSX.utils.sheet_to_json(wb.Sheets[n], { defval: null }) : [];
     loadState(parseAreaRows({ poleRows: rd("VI TRI TRU"), areaRows: rd("VUNG TINH"), lampRows: rd("DEN TREN TRU") }, getIes()), name);
   }
-  function loadSample(kind) {
-    const ies = getIes(), e = ies[0] || null;
-    if (kind === "plaza") {
-      const four = (start, tilt) => spreadLamps(Array.from({ length: 4 }, () => ({ aim: 0, tilt, arm: 0.6, H: null, ies: e, iesWant: e ? e.name : "" })), start);
-      // trụ giữa 4 đèn chia đều (cần chữ thập); 4 trụ góc mỗi trụ 2 đèn xoè ±30° hướng vào giữa
-      const two = (aim) => [-30, 30].map((d) => ({ aim: aim + d, tilt: 30, arm: 0.5, H: null, ies: e, iesWant: e ? e.name : "" }));
-      const poles = [{ id: "T1", x: 30, y: 25, H: 12, lamps: four(45, 30) },
-        ...[[6, 6, 45], [54, 6, 135], [54, 44, -135], [6, 44, -45]].map(([x, y, aim], i) => ({ id: `T${i + 2}`, x, y, H: 10, lamps: two(aim) }))];
-      for (const p of poles) { p.n = p.lamps.length; p.ies = e; p.iesWant = e ? e.name : ""; p.aim = p.lamps[0].aim; p.tilt = p.lamps[0].tilt; }
-      const r = findReq("TCVN13608-B7-I-cv-santhoatdong") || null;
-      loadState({ poles, areas: [{ name: "Quảng trường", x0: 0, y0: 0, L: 60, W: 50, step: 1, req: r ? { id: r.id, Eav: r.Eav, Uo: r.Uo, label: r.label } : null, MF: null, poly: null }], warnings: e ? [] : ["Chưa chọn thư mục IES — chọn để tính độ rọi."] }, "Quang truong mau");
-      select("T1"); return;
-    }
-    const poles = [[-3, -2, 35], [20, -2, 90], [43, -2, 145], [-3, 22, -35], [20, 22, -90], [43, 22, -145]]
-      .map(([x, y, aim], i) => ({ id: `T${i + 1}`, x, y, H: 12, aim, tilt: 35, n: 2, ies: e, iesWant: e ? e.name : "" }));
-    const r = findReq("TCVN13608-B12-luyentap");
-    loadState({ poles, areas: [{ name: "Sân bóng đá mini", x0: 0, y0: 0, L: 40, W: 20, step: 1, req: { id: r.id, Eav: r.Eav, Uo: r.Uo, label: r.label }, MF: null, poly: null }], warnings: e ? [] : ["Chưa chọn thư mục IES — chọn để tính độ rọi."] }, "San mau");
+  function loadSample(kind = "san") {
+    const s0 = sampleState(kind, getIes());
+    loadState(s0, s0.name);
+    if (s0.select) select(s0.select);
   }
   function onIes() {
     const ies = getIes();
@@ -393,11 +415,12 @@ export function initAreaUI({ root, setStatus, getIes: getIesAll, getMF, saveXlsx
     await saveXlsxBuffer(await wbx.xlsx.writeBuffer(), outName("KhuVuc", st.name || null, "xlsx"));
     setStatus("Đã tạo file Excel khu vực: vị trí trụ (đã chỉnh), vùng tính, kết quả, lưới độ rọi.");
   }
-  async function downloadTemplate() {
+  async function downloadTemplate(kind = "san") {
     if (!window.ExcelJS) { setStatus("Chưa tải được thư viện ExcelJS.", true); return; }
-    const wbx = await buildAreaTemplate(window.ExcelJS);
-    await saveXlsxBuffer(await wbx.xlsx.writeBuffer(), "DATA_MAU_KHU_VUC_WEBDIALUX.xlsx");
-    setStatus("Đã tạo Excel mẫu khu vực (sân bóng mini 6 trụ). Điền tên file IES rồi nạp lại.");
+    const wbx = await buildAreaTemplate(window.ExcelJS, { sample: kind === "san" ? null : sampleState(kind, []) });
+    const fn = { san: "DATA_MAU_KHU_VUC_WEBDIALUX.xlsx", congvien: "DATA_MAU_CONG_VIEN_WEBDIALUX.xlsx", quangtruong: "DATA_MAU_QUANG_TRUONG_WEBDIALUX.xlsx" }[kind] || "DATA_MAU_KHU_VUC_WEBDIALUX.xlsx";
+    await saveXlsxBuffer(await wbx.xlsx.writeBuffer(), fn);
+    setStatus(kind === "congvien" ? "Đã tạo Excel mẫu công viên (4 vùng theo Bảng 7 TCVN 13608:2023, trụ nhiều đèn). Đổi tên file IES cho đúng thư viện rồi nạp lại." : "Đã tạo Excel mẫu khu vực. Điền tên file IES rồi nạp lại.");
   }
   async function exportPdf() {
     if (!hasData()) return;
@@ -406,7 +429,7 @@ export function initAreaUI({ root, setStatus, getIes: getIesAll, getMF, saveXlsx
     const result = st.result || calcArea(st, { MF: getMF() });
     const doc = makeDoc({ jsPDF, font });
     renderAreaPdf(doc, { state: st, result, projectName: st.name || "Khu vực" });
-    finalizeDoc(doc, { tail: "độ rọi ngang duy trì · cùng engine đã kiểm chứng DIALux · TCVN 13608:2023 / EN 12193" });
+    finalizeDoc(doc, { tail: "độ rọi ngang duy trì · TCVN 13608:2023 / EN 12193" });
     const blob = doc.output("blob");
     const a = Object.assign(document.createElement("a"), { href: URL.createObjectURL(blob), download: outName("BaoCao_KhuVuc", st.name || "khu_vuc", "pdf") });
     document.body.appendChild(a); a.click(); a.remove();

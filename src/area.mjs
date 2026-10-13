@@ -289,8 +289,12 @@ export async function buildAreaWorkbook(ExcelJS, { poles, areas, result, project
 }
 
 /** Excel mẫu khu vực: sân bóng đá mini 40 × 20 m, 6 trụ. */
-export async function buildAreaTemplate(ExcelJS, { version = VERSION } = {}) {
+export async function buildAreaTemplate(ExcelJS, { version = VERSION, sample = null } = {}) {
   const wb = new ExcelJS.Workbook(); wb.creator = `WebDialux-CS ${version}`;
+  if (sample) {                                                   // mẫu dựng sẵn (công viên, quảng trường): ghi đủ trụ, đèn, vùng
+    polesSheet(wb, sample.poles); lampsSheet(wb, sample.poles); areasSheet(wb, sample.areas); reqSheet(wb); helpSheet(wb);
+    return wb;
+  }
   const poles = [
     ["T1", -3, -2, 12, 35], ["T2", 20, -2, 12, 90], ["T3", 43, -2, 12, 145],
     ["T4", -3, 22, 12, -35], ["T5", 20, 22, 12, -90], ["T6", 43, 22, 12, -145],
@@ -305,6 +309,10 @@ export async function buildAreaTemplate(ExcelJS, { version = VERSION } = {}) {
   const areas = [{ name: "Sân bóng đá mini", x0: 0, y0: 0, L: 40, W: 20, step: 1, req: { id: "TCVN13608-B12-luyentap" }, MF: null }];
   areasSheet(wb, areas);
   reqSheet(wb);
+  helpSheet(wb);
+  return wb;
+}
+function helpSheet(wb) {
   const wh = wb.addWorksheet("HUONG DAN");
   wh.getColumn(1).width = 4; wh.getColumn(2).width = 110;
   wh.getCell("B1").value = "HƯỚNG DẪN — CHẾ ĐỘ KHU VỰC TỰ DO (sân thể thao, công viên, quảng trường, bãi đỗ xe)";
@@ -321,5 +329,5 @@ export async function buildAreaTemplate(ExcelJS, { version = VERSION } = {}) {
     "Bước lưới để trống: app tự chọn (1 m với vùng nhỏ). MF để trống: dùng ô MF chung trên app.",
     "Trên app có thể kéo trụ, sửa bảng rồi bấm Tải Excel để lưu lại vị trí đã chỉnh. Mọi tính toán chạy trên máy, không gửi file lên mạng.",
   ].forEach((t, i) => { const c = wh.getCell(`B${i + 3}`); c.value = `${i + 1}. ${t}`; c.alignment = { wrapText: true, vertical: "top" }; wh.getRow(i + 3).height = 30; });
-  return wb;
+  return wh;
 }

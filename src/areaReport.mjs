@@ -3,6 +3,7 @@ import { drawAreaPlan, heatColor } from "./areaDraw.mjs";
 import { vn, fitText, drawTable } from "./report.mjs";
 import { luminaireLabel } from "./mapping.mjs";
 import { poleLamps } from "./area.mjs";
+import { drawArea3D } from "./areaView3D.mjs";
 
 const OK = [31, 138, 76], BAD = [192, 57, 43];
 
@@ -19,6 +20,13 @@ export function areaPlanDataURL(state, result, doc = globalThis.document, W = 14
   const ctx = cv.getContext("2d");
   const v = drawAreaPlan(ctx, W, H, { poles: state.poles, areas: state.areas, result }, { labels: true, px: 2 });
   return { url: cv.toDataURL("image/png"), range: v.range };
+}
+
+/** Ảnh phối cảnh 3D (PNG dataURL) cho PDF. */
+export function area3DDataURL(state, result, doc = globalThis.document, W = 1400, H = 760) {
+  const cv = doc.createElement("canvas"); cv.width = W; cv.height = H;
+  drawArea3D(cv.getContext("2d"), W, H, { poles: state.poles, areas: state.areas, result }, { px: 1.6 });
+  return cv.toDataURL("image/png");
 }
 
 /** Vẽ toàn bộ báo cáo khu vực vào doc (jsPDF, đã nạp font). */
@@ -55,8 +63,14 @@ export function renderAreaPdf(doc, { state, result, projectName = "", date = new
   doc.text("Chấm đỏ = trụ có đèn chưa có file IES. Nét đứt = hướng chiếu từng đèn.", M + 95, y + 2.5);
   doc.setTextColor(30, 30, 40);
 
-  // Trang 2: trụ + bộ đèn
+  // Trang 2: phối cảnh 3D ban đêm (dữ liệu thật) + trụ + bộ đèn
   doc.addPage(); y = header(doc, title);
+  doc.setFontSize(11); doc.text("Mô phỏng chiếu sáng ban đêm (phối cảnh 3D)", M, y); y += 2;
+  const p3 = area3DDataURL(state, result);
+  doc.addImage(p3, "PNG", M, y, 182, 182 * 760 / 1400); y += 182 * 760 / 1400 + 3;
+  doc.setFontSize(7.6); doc.setTextColor(110, 120, 135);
+  doc.text("Mặt vùng tô theo lưới độ rọi đã tính (tối → sáng = Emin → Emax); trụ, cần, đèn đúng toạ độ, cao độ và hướng chiếu từng đèn.", M, y); y += 7;
+  doc.setTextColor(30, 30, 40);
   doc.setFontSize(11); doc.text("Vị trí trụ và bộ đèn trên từng trụ", M, y); y += 2;
   const prow = [["Trụ", "Đèn", "x (m)", "y (m)", "Cao (m)", "Hướng", "Nghiêng", "Vươn (m)", "Bộ đèn"]];
   for (const p of state.poles) poleLamps(p).forEach((l, i) => prow.push([i ? "" : p.id, String(i + 1), i ? "" : vn(p.x, 2), i ? "" : vn(p.y, 2),
