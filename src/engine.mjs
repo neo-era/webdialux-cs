@@ -77,11 +77,15 @@ export function calcRoad(input) {
     return avgE(pts, lums, I, MF);
   };
   const W = width;
-  // bề rộng dải = min(5 m, nửa lòng đường, vỉa hè có sẵn) — EN 13201-3: dải ngoài bằng dải mép, giới hạn theo bề rộng thực
+  // SR (QCVN 07-7 / CIE 140): cộng hai mép; dải = min(5 m, nửa lòng đường, vỉa hè có sẵn)
   const sw = Math.min(5, W / 2, sidewalk > 0 ? sidewalk : Infinity);
-  const outL = sampleStrip(-sw, 0), outR = sampleStrip(W, W + sw);
-  const inL = sampleStrip(0, sw), inR = sampleStrip(W - sw, W);
-  const SR = (outL + outR) / (inL + inR);
+  const SR = (sampleStrip(-sw, 0) + sampleStrip(W, W + sw)) / (sampleStrip(0, sw) + sampleStrip(W - sw, W));
+  // REI (EN 13201-2:2015, như DIALux): từng mép riêng, lấy mép xấu hơn; dải = min(5 m, bề rộng làn, vỉa hè)
+  // — đối chiếu DIALux Cầu Bình Triệu 2: dải 13/3 = 4,33 m → 0,56.
+  const rw = Math.min(5, W / Math.max(1, lanes), W / 2, sidewalk > 0 ? sidewalk : Infinity);
+  const srL = sampleStrip(-rw, 0) / sampleStrip(0, rw);
+  const srR = sampleStrip(W, W + rw) / sampleStrip(W - rw, W);
+  road.REI = Math.min(srL, srR);
   road.SR = SR;
 
   const req = QCVN[roadClass] || QCVN.D1;
@@ -108,7 +112,7 @@ export function calcRoad(input) {
   }
 
   return {
-    E, road, observers: obsResults, grid, Evals, srWidth: sw, Ewalk,
+    E, road, observers: obsResults, grid, Evals, srWidth: sw, reiWidth: rw, reiSides: { left: srL, right: srR }, Ewalk,
     req, checks, pass, roadClass,
     provisionalLuminance: !!rfn.provisional,
   };

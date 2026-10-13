@@ -59,6 +59,7 @@ export function reportData(input, result, ph, meta = {}) {
       checkRow("SR", road.SR, req.SR, c.SR, ""),
     ],
     pass: result.pass,
+    rei: road.REI != null ? { value: road.REI, width: result.reiWidth, target: req.SR } : null,
     illum: { Eav: result.E.avg, Emin: result.E.min, Emax: result.E.max, g1: result.E.g1, g2: result.E.g2 },
     observers: result.observers.map((o) => ({ y: o.pos.y, Lav: o.Lav, Uo: o.Uo, Ul: o.Ul, TI: o.TI })),
   };
@@ -75,14 +76,20 @@ export function maxIntensityPerKlm(ph, makeIntensity, gammaDeg, pose = {}) {
   const flux = ph.totalLumens || null;
   if (!flux) return null;
   const DEG = Math.PI / 180, lum = { x: 0, y: 0, H: 0, tilt: pose.tilt || 0, rot: pose.rot || 0, c0dir: 1 };
-  let imax = 0;
-  for (let gw = gammaDeg; gw <= 180; gw += 0.5) {
+  const at = (gw, f) => {
     const sg = Math.sin(gw * DEG), cg = Math.cos(gw * DEG);
-    for (let f = 0; f < 360; f += 2.5) {
-      const a = angleLumToPoint(lum, { x: sg * Math.sin(f * DEG), y: sg * Math.cos(f * DEG), z: -cg });
-      const v = I(a.C, a.gamma); if (v > imax) imax = v;
-    }
+    const a = angleLumToPoint(lum, { x: sg * Math.sin(f * DEG), y: sg * Math.cos(f * DEG), z: -cg });
+    return I(a.C, a.gamma);
+  };
+  // quét thô 0,5° × 2,5° rồi tinh chỉnh 0,1° × 0,25° quanh 3 đỉnh lớn nhất — khớp DIALux ±0,5%, vẫn nhanh
+  const top = [];
+  for (let gw = gammaDeg; gw <= 180; gw += 0.5) for (let f = 0; f < 360; f += 2.5) {
+    const v = at(gw, f);
+    if (top.length < 3 || v > top[2].v) { top.push({ v, gw, f }); top.sort((p, q) => q.v - p.v); top.length = Math.min(3, top.length); }
   }
+  let imax = top.length ? top[0].v : 0;
+  for (const t of top) for (let gw = Math.max(gammaDeg, t.gw - 0.5); gw <= Math.min(180, t.gw + 0.5) + 1e-9; gw += 0.1)
+    for (let f = t.f - 2.5; f <= t.f + 2.5 + 1e-9; f += 0.25) { const v = at(gw, f); if (v > imax) imax = v; }
   return imax / (flux / 1000); // cd/klm
 }
 
@@ -128,8 +135,8 @@ export function energyIndicators({ P, spacing, width, Eav, arrangement, hours = 
   const perM2 = nSide * P / (spacing * width);  // W/m²
   return {
     nSide,
-    // như DIALux: số đèn trên 1 km mỗi hàng làm tròn LÊN (⌈1000/S⌉); chặn sai số dấu phẩy động khi chia hết
-    Wkm: nSide * Math.ceil(1000 / spacing - 1e-9) * P,
+    // như DIALux: số đèn trên 1 km mỗi hàng = 1000/S làm tròn gần nhất (đối chiếu S = 34, 35, 36, 37, 42 m)
+    Wkm: nSide * Math.max(1, Math.round(1000 / spacing)) * P,
     Dp: Eav ? perM2 / Eav : null,
     De: perM2 * hours / 1000,
     annualKwh: nSide * P * hours / 1000,
@@ -872,6 +879,11 @@ export function renderRoadPage(doc, { input, result, ph, meta, makeIntensity }) 
   y += 3;
   doc.setFontSize(7.6); doc.setTextColor(90, 100, 120);
   doc.text("Hệ số bảo trì MF = " + vn(I.MF, 2) + " dùng cho tính toán.", M, y);
+  if (d.rei) {
+    y += 3.8;
+    doc.text(fitText(doc, `Tham khảo REI (EN 13201-2:2015, mép xấu hơn, dải ${vn(d.rei.width, 2)} m) = ${vn(d.rei.value, 2)}` +
+      ` — để đối chiếu phần mềm theo EN 13201; kết luận theo SR của QCVN 07-7.`, 182), M, y);
+  }
   doc.setTextColor(30, 30, 40); y += 5;
 
   // Chỉ số năng lượng

@@ -48,9 +48,10 @@ export function buildLuminaires(g) {
  * @returns {{points: Array<{x,y,li}>, nLong, nTrans, laneCenters:number[], laneWidth, S, W}}
  */
 export function buildGrid(g) {
-  const { spacing: S, width: W, lanes = 2 } = g;
+  const { spacing: S, width: W } = g;
+  const lanes = Math.max(1, Math.round(g.lanes ?? 2));        // số làn nguyên (Excel có thể ghi 2,5)
   const nLong = S <= 30 ? 10 : Math.ceil(S / 3);
-  const nTrans = Math.max(3 * lanes, Math.ceil(W / 1.5));
+  const nTrans = 3 * lanes;                      // EN 13201-3: 3 điểm ngang mỗi làn (như DIALux)
   const dL = S / nLong, dT = W / nTrans;
   const points = [];
   for (let i = 0; i < nLong; i++) {
