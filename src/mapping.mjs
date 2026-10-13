@@ -8,6 +8,7 @@ export const COLS = {
   spacing: "Khoảng cách trụ TB (m)", lanes: "Số làn xe", tilt: "Góc nghiêng bộ đèn (độ)",
   arrangement: "Cách bố trí trụ", roadClass: "Cấp đường", loaituyen: "Loại tuyến",
   dpc: "Dải phân cách giữa", luuluong: "Lưu lượng xe",
+  sidewalk: "Độ rộng vỉa hè (m)", medianW: "Độ rộng dải phân cách (m)",
   model: "Loại đèn", fitting: "Fitting", power: "Công suất LED (W)", ncc: "Nhà cung cấp",
 };
 
@@ -77,10 +78,16 @@ export function rowToGeometry(row) {
   //  (3) đoán theo hình học           -> (classSource="hình học")
   let roadClass = (row[COLS.roadClass] || "").toString().trim().toUpperCase();
   let autoClass = false, classSource = "cột";
+  const dpc = String(row[COLS.dpc] || "").toLowerCase().trim();
+  const noMedian = dpc === "" || dpc.includes("không") || dpc.includes("khong") || dpc === "0" || dpc === "no" || dpc === "false";
+  const median = !noMedian && (dpc.includes("có") || dpc.includes("co") || dpc.includes("yes") || dpc.includes("true") || dpc === "1");
+  // vỉa hè: dùng giới hạn dải tính SR + vẽ; dải phân cách: chỉ để vẽ (engine coi W = tổng các làn)
+  const swRaw = num(row[COLS.sidewalk]);
+  const sidewalk = swRaw != null && swRaw > 0 ? swRaw : null;
+  const mwRaw = num(row[COLS.medianW]);
+  const medianW = mwRaw != null && mwRaw > 0 ? mwRaw : null;
+  if (sidewalk != null && setback > sidewalk) w.push(`khoảng cách trụ đến mép (${setback} m) lớn hơn độ rộng vỉa hè (${sidewalk} m)`);
   if (!VALID_CLASS.test(roadClass)) {
-    const dpc = String(row[COLS.dpc] || "").toLowerCase().trim();
-    const noMedian = dpc === "" || dpc.includes("không") || dpc.includes("khong") || dpc === "0" || dpc === "no" || dpc === "false";
-    const median = !noMedian && (dpc.includes("có") || dpc.includes("co") || dpc.includes("yes") || dpc.includes("true") || dpc === "1");
     const fromType = classifyFromType(row[COLS.loaituyen], { median });
     if (fromType) { roadClass = fromType; classSource = "loại tuyến"; }
     else { roadClass = classifyRoadClass({ width, lanes, median }); classSource = "hình học"; }
@@ -89,7 +96,7 @@ export function rowToGeometry(row) {
 
   const overhang = vuon - setback; // net light-point so với mép gần
   return {
-    input: { H, overhang, spacing, width, lanes, tilt, arrangement, roadClass, vuon, setback },
+    input: { H, overhang, spacing, width, lanes, tilt, arrangement, roadClass, vuon, setback, sidewalk, median, medianW },
     warnings: w, autoClass, classSource,
     meta: {
       stt: row[COLS.stt], tuyen: row[COLS.tuyen],

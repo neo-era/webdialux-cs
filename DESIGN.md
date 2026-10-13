@@ -75,3 +75,11 @@ Mục tiêu: sửa số trong Excel → Kết quả/điểm/hạng/✓/tổng h�
 - Excel sheet 2 gộp theo tên bộ đèn **không phân biệt hoa/thường** (Excel so `=` cũng vậy → tránh đếm đôi); cột V sheet 1 = tên bộ đèn (rơi về model nếu thiếu file) để sheet 3/2 luôn tra được. Hai file IES khác nhau cùng hãng·model·CS giờ là 2 dòng riêng (trước gộp theo model).
 - Mục lục: 36 dòng trang đầu, 42 dòng trang sau (hết ở y=280, chân trang y=290); K = 1 + ⌈(n−36)/42⌉ (300 tuyến → 8 trang). Tiêu đề "Độ rọi ngang" sang trang cùng ảnh (bookmark trỏ đúng).
 - Kế hoạch: (1) chốt mẫu mục lục (2–3 phương án render) → (2) test: số trang mục lục khớp, link/outline có trong PDF, dung lượng ≤ 100 MB/300 tuyến, hàm tên → (3) code → (4) review → (5) E2E 786 tuyến + PWA.
+
+## v2.2 — Excel mẫu định dạng + bảng cấp đường; vỉa hè & dải phân cách (3D)
+Tiêu chí (chốt 13-10-2026):
+- Excel mẫu (`src/template.mjs`, ExcelJS): sheet `DU LIEU TUYEN` (header ở **dòng 1** để app đọc bằng `sheet_to_json`), tô màu theo nhóm (định danh / hình học bắt buộc / hình học tuỳ chọn / bộ đèn), ghi chú đơn vị trên header, cố định dòng 1 + 2 cột đầu, bộ lọc, danh sách chọn (Cấp đường, Cách bố trí trụ, Dải phân cách giữa, Loại tuyến). Bỏ các cột kết quả cũ (app không ghi ngược nữa). Sheet `CAP DUONG QCVN07-7-23` lấy số từ `QCVN` của engine (một nguồn) + bảng Loại tuyến → cấp. Sheet `HUONG DAN`.
+- Cột mới **"Độ rộng vỉa hè (m)"** → `input.sidewalk` (trống = null, giữ kết quả cũ). Dải SR: `srW = min(5, W/2, sidewalk)` (EN 13201-3: dải ngoài = dải mép, giới hạn bởi bề rộng có sẵn). Cảnh báo khi khoảng cách trụ-mép > vỉa hè.
+- Cột mới **"Độ rộng dải phân cách (m)"** → `input.medianW`; `input.median` (bool) từ "Dải phân cách giữa". **Chỉ dùng để vẽ** (đã chốt): engine vẫn coi W là tổng các làn. Thiếu bề rộng mà có dải → vẽ 2 m.
+- Engine `detail` trả thêm `Ewalk = {w, ys, left[ny][nLong], right[ny][nLong]}`: lưới E trên vỉa hè hai bên (bề rộng vẽ = sidewalk ?? max(3, setback+1)) để 3D tô sáng vỉa hè theo số thật.
+- 3D/mặt bằng: hàm `lateralLayout(I)` ánh xạ toạ độ ngang tính toán (0..W, vỉa hè <0 và >W) ↔ toạ độ vẽ có chèn dải phân cách ở giữa (W/2). Vỉa hè: mặt lát sáng hơn nhựa, tô theo Ewalk, có bó vỉa; dải phân cách: bó vỉa + mặt cỏ, tô theo E giữa đường; vạch làn chia hai bên, không vẽ vạch trùng dải. Trụ đứng trên vỉa hè (setback), cần vươn vào làn.

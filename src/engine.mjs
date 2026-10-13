@@ -28,7 +28,7 @@ export function calcRoad(input) {
   const {
     ies, H, overhang, spacing, width, lanes = 2, arrangement = "1 bên",
     tilt = 0, MF = 0.8, roadClass = "D1", spanWindow = 5,
-    q0 = null, detail = false,
+    q0 = null, detail = false, sidewalk = null, setback = null,
   } = input;
   // Bảng r mặt đường: ưu tiên rfn truyền vào; nếu không, dùng R3 (q0=0,07),
   // nhân tỉ lệ nếu người dùng chọn q0 khác (vd 0,08 theo DIALux Tarmac).
@@ -77,7 +77,8 @@ export function calcRoad(input) {
     return avgE(pts, lums, I, MF);
   };
   const W = width;
-  const sw = Math.min(5, W / 2); // bề rộng dải = min(5m, nửa lòng đường) — tránh chồng dải
+  // bề rộng dải = min(5 m, nửa lòng đường, vỉa hè có sẵn) — EN 13201-3: dải ngoài bằng dải mép, giới hạn theo bề rộng thực
+  const sw = Math.min(5, W / 2, sidewalk > 0 ? sidewalk : Infinity);
   const outL = sampleStrip(-sw, 0), outR = sampleStrip(W, W + sw);
   const inL = sampleStrip(0, sw), inR = sampleStrip(W - sw, W);
   const SR = (outL + outR) / (inL + inR);
@@ -96,8 +97,18 @@ export function calcRoad(input) {
   };
   const pass = Object.values(checks).every(Boolean);
 
+  // Lưới E trên vỉa hè hai bên (chỉ khi detail) — để phối cảnh 3D tô sáng vỉa hè theo số thật
+  let Ewalk;
+  if (detail) {
+    const ww = sidewalk > 0 ? sidewalk : Math.max(3, (setback || 0) + 1);
+    const nyw = 4, ysw = Array.from({ length: nyw }, (_, j) => ww * (j + 0.5) / nyw);   // khoảng cách ra ngoài mép
+    const rowAt = (yOf) => ysw.map((d) => Array.from({ length: grid.nLong }, (_, i) =>
+      illuminanceAtPoint({ x: grid.dL / 2 + i * grid.dL, y: yOf(d) }, lums, I, MF)));
+    Ewalk = { w: ww, ys: ysw, left: rowAt((d) => -d), right: rowAt((d) => W + d) };
+  }
+
   return {
-    E, road, observers: obsResults, grid, Evals,
+    E, road, observers: obsResults, grid, Evals, srWidth: sw, Ewalk,
     req, checks, pass, roadClass,
     provisionalLuminance: !!rfn.provisional,
   };

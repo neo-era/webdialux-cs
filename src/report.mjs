@@ -41,6 +41,7 @@ export function reportData(input, result, ph, meta = {}) {
       spacing: input.spacing, H: input.H, overhang: input.overhang, tilt: input.tilt,
       boomLength: input.vuon ?? null, setback: input.setback ?? null,
       width: input.width, lanes: input.lanes, arrangement: input.arrangement, MF: input.MF ?? 0.8,
+      sidewalk: input.sidewalk ?? null, median: !!input.median, medianW: input.medianW ?? null,
       surface: "CIE R3, q0 " + String(input.q0 ?? 0.07).replace(".", ","),
       q0: input.q0 ?? 0.07,
     },
@@ -215,24 +216,64 @@ export function polarDataURL(ph, makeIntensity, doc = globalThis.document) {
 }
 
 /** Sơ đồ mặt bằng 1 nhịp (trụ, hướng xe, kích thước) -> dataURL. */
+/**
+ * Bố trí ngang dùng cho hình vẽ (mặt bằng + 3D). Toạ độ TÍNH: y = 0..W là lòng đường (y=0 mép gần),
+ * y<0 / y>W là vỉa hè. Toạ độ VẼ: tâm đường = 0, có chèn dải phân cách bề rộng mW ở giữa (chỉ để vẽ —
+ * engine coi W là tổng các làn). Vỉa hè vẽ rộng `walk` (cột vỉa hè; trống → max(3, setback+1)).
+ */
+export function lateralLayout(I = {}) {
+  const W = I.width || 7;
+  const mW = I.median ? (I.medianW > 0 ? I.medianW : 2) : 0;
+  const Wt = W + mW;
+  const sb = (I.setback != null && isFinite(I.setback)) ? Math.max(0, I.setback) : 0.5;
+  const walk = I.sidewalk > 0 ? I.sidewalk : Math.max(3, sb + 1);
+  const toDraw = (y) => {
+    if (y <= 0) return -Wt / 2 + y;
+    if (y >= W) return Wt / 2 + (y - W);
+    if (!mW) return y - W / 2;
+    return y < W / 2 ? -Wt / 2 + y : -Wt / 2 + y + mW;
+  };
+  const classify = (yd) => {
+    if (yd < -Wt / 2) { const dd = -Wt / 2 - yd; return { kind: dd <= walk ? "walk" : "ground", side: "left", d: dd }; }
+    if (yd > Wt / 2) { const dd = yd - Wt / 2; return { kind: dd <= walk ? "walk" : "ground", side: "right", d: dd }; }
+    if (mW && Math.abs(yd) < mW / 2) return { kind: "median", d: yd };
+    return { kind: "road", y: (!mW || yd <= -mW / 2) ? yd + Wt / 2 : yd + Wt / 2 - mW };
+  };
+  return { W, mW, Wt, walk, sb, toDraw, classify };
+}
+
 export function planDataURL(d, doc = globalThis.document) {
   const I = d.install, W = I.width || 7, S = I.spacing || 30, ov = I.overhang || 0;
   const two = /đối xứng|doi xung|so le|staggered|opposite/i.test(I.arrangement || "");
   const stag = /so le|staggered/i.test(I.arrangement || "");
-  const sb = (I.setback != null && isFinite(I.setback)) ? Math.max(0, I.setback) : 0.5; // trụ cách mép
+  const LY = lateralLayout(I), Wt = LY.Wt, mW = LY.mW, walk = LY.walk, sb = LY.sb;
   const cv = doc.createElement("canvas"); cv.width = 760; cv.height = 400;
   const ctx = cv.getContext("2d"); ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, cv.width, cv.height);
-  const mL = 70, mR = 40, mT = 70, mB = 84;
+  const mL = 70, mR = 40, mT = 34, mB = 64;
   const pw = cv.width - mL - mR, ph2 = cv.height - mT - mB;
-  const X = (x) => mL + (x / S) * pw;              // dọc đường 0..S
-  const Y = (y) => mT + (y / W) * ph2;             // ngang đường 0..W (0 = mép gần/trên)
-  // nền lòng đường
-  ctx.fillStyle = "#f4f6f9"; ctx.fillRect(mL, mT, pw, ph2);
-  ctx.strokeStyle = "#9aa7b6"; ctx.lineWidth = 1.5; ctx.strokeRect(mL, mT, pw, ph2);
-  // vạch làn
+  const tot = Wt + 2 * walk;
+  const X = (x) => mL + (x / S) * pw;                         // dọc đường 0..S
+  const Yd = (yd) => mT + ((yd + tot / 2) / tot) * ph2;       // toạ độ vẽ (tâm đường = 0)
+  const Y = (y) => Yd(LY.toDraw(y));                          // toạ độ tính (0..W, hè <0 / >W)
+  const band = (y0, y1, fill) => { ctx.fillStyle = fill; ctx.fillRect(mL, Yd(y0), pw, Yd(y1) - Yd(y0)); };
+  // vỉa hè hai bên + lòng đường + dải phân cách
+  band(-tot / 2, -Wt / 2, "#e6e9ee"); band(Wt / 2, tot / 2, "#e6e9ee");
+  band(-Wt / 2, Wt / 2, "#f4f6f9");
+  if (mW) band(-mW / 2, mW / 2, "#dcebd7");
+  ctx.strokeStyle = "#9aa7b6"; ctx.lineWidth = 1.5;
+  for (const yd of [-Wt / 2, Wt / 2, ...(mW ? [-mW / 2, mW / 2] : [])]) { ctx.beginPath(); ctx.moveTo(mL, Yd(yd)); ctx.lineTo(mL + pw, Yd(yd)); ctx.stroke(); }
+  ctx.font = "12px sans-serif"; ctx.fillStyle = "#7b8695"; ctx.textAlign = "center";
+  const walkLbl = "Vỉa hè " + vn(walk, 1) + " m" + (I.sidewalk > 0 ? "" : " (minh hoạ)");
+  ctx.fillText(walkLbl, mL + pw / 2, (Yd(-tot / 2) + Yd(-Wt / 2)) / 2 + 4);
+  ctx.fillText(walkLbl, mL + pw / 2, (Yd(tot / 2) + Yd(Wt / 2)) / 2 + 4);
+  if (mW) { ctx.fillStyle = "#4f7a45"; ctx.fillText("Dải phân cách " + vn(mW, 1) + " m", mL + pw / 2, Yd(0) + 4); }
+  // vạch làn (bỏ vạch trùng dải phân cách)
   const lanes = I.lanes || 2;
-  ctx.setLineDash([10, 8]); ctx.strokeStyle = "#c2ccd8";
-  for (let l = 1; l < lanes; l++) { const yy = Y(W * l / lanes); ctx.beginPath(); ctx.moveTo(mL, yy); ctx.lineTo(mL + pw, yy); ctx.stroke(); }
+  ctx.setLineDash([10, 8]); ctx.strokeStyle = "#c2ccd8"; ctx.lineWidth = 1.5;
+  for (let l = 1; l < lanes; l++) {
+    const yr = W * l / lanes; if (mW && Math.abs(yr - W / 2) < 1e-6) continue;
+    const yy = Y(yr); ctx.beginPath(); ctx.moveTo(mL, yy); ctx.lineTo(mL + pw, yy); ctx.stroke();
+  }
   ctx.setLineDash([]);
   // mũi tên hướng xe (giữa mỗi làn)
   ctx.strokeStyle = "#5b6676"; ctx.fillStyle = "#5b6676"; ctx.lineWidth = 2;
@@ -241,37 +282,33 @@ export function planDataURL(d, doc = globalThis.document) {
     ctx.beginPath(); ctx.moveTo(x0, yy); ctx.lineTo(x1, yy); ctx.stroke();
     ctx.beginPath(); ctx.moveTo(x1, yy); ctx.lineTo(x1 - 7, yy - 4); ctx.lineTo(x1 - 7, yy + 4); ctx.closePath(); ctx.fill();
   }
-  // vỉa hè (dải ngoài mép) để thấy trụ đứng ngoài lòng đường
-  ctx.fillStyle = "#e9ecf1";
-  ctx.fillRect(mL, Y(-sb) - 10, pw, (Y(0) - Y(-sb)) + 10);
-  ctx.fillRect(mL, Y(W), pw, (Y(W + sb) - Y(W)) + 10);
-  ctx.strokeStyle = "#9aa7b6"; ctx.lineWidth = 1.5; ctx.strokeRect(mL, mT, pw, ph2); // vẽ lại viền lòng đường
-  // trụ (ngoài đường, cách mép sb) + cần đèn + điểm sáng (tại overhang)
-  const poleAt = (xx, yPole, yLamp) => {
-    const px = X(xx), pyP = Y(yPole), pyL = Y(yLamp);
+  // trụ (trên vỉa hè, cách mép sb) + cần đèn + điểm sáng (tại overhang)
+  const poleAt = (xx, yPoleD, yLampD) => {
+    const px = X(xx), pyP = Yd(yPoleD), pyL = Yd(yLampD);
     ctx.strokeStyle = "#4b5563"; ctx.lineWidth = 2.5; ctx.beginPath(); ctx.moveTo(px, pyP); ctx.lineTo(px, pyL); ctx.stroke(); // cần
-    ctx.fillStyle = "#374151"; ctx.beginPath(); ctx.arc(px, pyP, 5.5, 0, 2 * Math.PI); ctx.fill();               // trụ
+    ctx.fillStyle = "#374151"; ctx.beginPath(); ctx.arc(px, pyP, 5.5, 0, 2 * Math.PI); ctx.fill();                 // trụ
     ctx.fillStyle = "#f59e0b"; ctx.strokeStyle = "#b45309"; ctx.lineWidth = 1.2;
-    ctx.beginPath(); ctx.rect(px - 5, pyL - 3.5, 10, 7); ctx.fill(); ctx.stroke();                              // bộ đèn
+    ctx.beginPath(); ctx.rect(px - 5, pyL - 3.5, 10, 7); ctx.fill(); ctx.stroke();                                // bộ đèn
   };
-  const near = (k) => poleAt(k * S, -sb, ov);
-  const far = (k, off = 0) => poleAt(k * S + off, W + sb, W - ov);
+  const near = (k) => poleAt(k * S, -Wt / 2 - sb, LY.toDraw(ov));
+  const far = (k, off = 0) => poleAt(k * S + off, Wt / 2 + sb, LY.toDraw(W - ov));
   for (let k = 0; k <= 1; k++) { near(k); if (two) far(k, stag ? S / 2 : 0); }
   if (stag) far(0, -S / 2);
-  // kích thước S (dưới) và W (phải)
+  // kích thước S (dưới) và W (phải, đo lòng đường)
   ctx.strokeStyle = "#1f2937"; ctx.fillStyle = "#1f2937"; ctx.lineWidth = 1; ctx.font = "16px sans-serif";
-  const yb = Y(W + sb) + 30;
+  const yb = mT + ph2 + 22;
   ctx.beginPath(); ctx.moveTo(mL, yb); ctx.lineTo(mL + pw, yb); ctx.stroke();
   ctx.textAlign = "center"; ctx.fillText(vn(S, 1) + " m", mL + pw / 2, yb + 18);
   const xr = mL + pw + 22;
-  ctx.beginPath(); ctx.moveTo(xr, mT); ctx.lineTo(xr, mT + ph2); ctx.stroke();
-  ctx.save(); ctx.translate(xr + 16, mT + ph2 / 2); ctx.rotate(-Math.PI / 2); ctx.fillText(vn(W, 1) + " m", 0, 0); ctx.restore();
-  // nhãn giữa
-  const area = S * W;
+  ctx.beginPath(); ctx.moveTo(xr, Yd(-Wt / 2)); ctx.lineTo(xr, Yd(Wt / 2)); ctx.stroke();
+  ctx.save(); ctx.translate(xr + 16, Yd(0)); ctx.rotate(-Math.PI / 2);
+  ctx.fillText(vn(W, 1) + " m" + (mW ? " + " + vn(mW, 1) + " m" : ""), 0, 0); ctx.restore();
+  // nhãn trên lòng đường (nửa gần nếu có dải phân cách)
+  const area = S * W, yLbl = mW ? (Yd(-Wt / 2) + Yd(-mW / 2)) / 2 : Yd(0);
   ctx.fillStyle = "#1f2937"; ctx.textAlign = "center"; ctx.font = "bold 16px sans-serif";
-  ctx.fillText(`${d.tuyen} (${d.roadClass}), ${vn(area, 2)} m²`, mL + pw / 2, mT + ph2 / 2 - 4);
+  ctx.fillText(`${d.tuyen} (${d.roadClass}), ${vn(area, 2)} m²`, mL + pw / 2, yLbl - 4);
   ctx.font = "14px sans-serif"; ctx.fillStyle = "#5b6676";
-  ctx.fillText("Mặt đường: " + I.surface, mL + pw / 2, mT + ph2 / 2 + 16);
+  ctx.fillText("Mặt đường: " + I.surface, mL + pw / 2, yLbl + 16);
   return cv.toDataURL("image/png");
 }
 
@@ -292,6 +329,7 @@ export function cctToRGB(K) {
  */
 export function perspective3DDataURL(d, result, doc = globalThis.document) {
   const I = d.install, W = I.width || 7, S = I.spacing || 30, H = I.H || 9, ov = I.overhang || 0;
+  const LY = lateralLayout(I), Wt = LY.Wt, mW = LY.mW;
   const two = /đối xứng|doi xung|so le|staggered|opposite/i.test(I.arrangement || "");
   const stag = /so le|staggered/i.test(I.arrangement || "");
   const CW = 840, CH = 400, xNear = 6, Xfar = 220;
@@ -346,46 +384,85 @@ export function perspective3DDataURL(d, result, doc = globalThis.document) {
   ctx.globalAlpha = 1;
   ctx.fillStyle = "#0e1014"; ctx.fillRect(0, horizonY, CW, CH - horizonY);
 
-  // --- mặt đường: tô từng pixel theo E thật ---
+  // --- mặt đường + vỉa hè + dải phân cách: tô từng pixel theo E thật ---
+  const EW = result.Ewalk;                                   // lưới E trên vỉa hè (engine detail)
+  const sampleWalk = (xw, side, dd) => {
+    if (!EW) return 0.45 * sampleE(xw, side === "left" ? 0 : W);  // dữ liệu cũ: ước lượng từ mép đường
+    const M = side === "left" ? EW.left : EW.right, ysw = EW.ys, n = M[0].length;
+    let fi = ((((xw % S) + S) % S) - xs[0]) / dL, i0 = Math.floor(fi), tx = fi - i0;
+    const ia = ((i0 % n) + n) % n, ib = (ia + 1) % n;
+    const fj = Math.max(0, Math.min(ysw.length - 1, (dd - ysw[0]) / (ysw[1] - ysw[0] || 1)));
+    const j0 = Math.min(ysw.length - 2, Math.floor(fj)), ty = fj - j0;
+    const a = M[j0][ia] + (M[j0][ib] - M[j0][ia]) * tx, b = M[j0 + 1][ia] + (M[j0 + 1][ib] - M[j0 + 1][ia]) * tx;
+    return a + (b - a) * ty;
+  };
+  const pave0 = [44, 45, 50], paveLit = mix(mix(LC, white, 0.25), [200, 198, 192], 0.35);   // gạch lát hè
+  const grass0 = [16, 30, 20], grassLit = mix([70, 128, 64], LC, 0.25);                      // cỏ dải phân cách
   const img = ctx.getImageData(0, 0, CW, CH); const px = img.data;
   const y0 = Math.ceil(horizonY) + 1;
   for (let sy = y0; sy < CH; sy++) {
     const xw = f * hCam / (sy - horizonY) - d0;        // khoảng cách dọc đường
-    if (xw < 0 || xw > Xfar) continue;
+    if (xw < -d0 + 0.6 || xw > Xfar) continue;          // tô cả vùng sát camera (trước đây bỏ trống thành dải đen)
     const kx = (xw + d0) / f;
     for (let sx = 0; sx < CW; sx++) {
-      const yLat = (sx - cx) * kx;
-      if (yLat < -W / 2 || yLat > W / 2) continue;
-      const E = sampleE(xw, yLat + W / 2);
-      const c = ramp((E - Emin) / Math.max(1e-6, Emax - Emin)); // giãn Emin→Emax cho rõ vũng sáng/tối
+      const cl = LY.classify((sx - cx) * kx);
+      let c;
+      if (cl.kind === "road") {
+        const E = sampleE(xw, cl.y);
+        c = ramp((E - Emin) / Math.max(1e-6, Emax - Emin)); // giãn Emin→Emax cho rõ vũng sáng/tối
+      } else if (cl.kind === "walk") {
+        const t = Math.max(0, Math.min(1, sampleWalk(xw, cl.side, cl.d) / Emax));
+        c = mix(pave0, paveLit, Math.pow(t, 0.8) * 0.9);
+        if (((Math.floor(xw / 0.6) + Math.floor(cl.d / 0.6)) & 1) === 0) c = [c[0] * 0.93, c[1] * 0.93, c[2] * 0.93]; // mạch gạch
+      } else if (cl.kind === "median") {
+        const t = Math.max(0, Math.min(1, sampleE(xw, W / 2) / Emax));
+        c = mix(grass0, grassLit, Math.pow(t, 0.9) * 0.8);
+      } else continue;
       const o = (sy * CW + sx) * 4;
       px[o] = c[0]; px[o + 1] = c[1]; px[o + 2] = c[2]; px[o + 3] = 255;
     }
   }
   ctx.putImageData(img, 0, 0);
 
-  // --- vạch mép & vạch làn (mờ, để lộ dữ liệu) ---
-  for (const s of [-1, 1]) {
-    const a = proj(0, s * W / 2), b = proj(Xfar, s * W / 2);
-    ctx.strokeStyle = "rgba(240,242,246,0.75)"; ctx.lineWidth = Math.max(0.8, a.s * 0.1);
-    ctx.beginPath(); ctx.moveTo(a.sx, a.sy); ctx.lineTo(b.sx, b.sy); ctx.stroke();
-  }
+  // --- bó vỉa (mép hè + mép dải phân cách) và vạch sơn — dải đa giác đúng phối cảnh (bề rộng thật, m) ---
+  const xBot = f * hCam / (CH - horizonY) - d0;               // điểm dọc đường ở mép dưới khung hình
+  const strip = (yd0, yd1, color, x0 = xBot, x1 = Xfar) => {
+    const a0 = proj(x0, yd0), a1 = proj(x1, yd0), b1 = proj(x1, yd1), b0 = proj(x0, yd1);
+    ctx.fillStyle = color; ctx.beginPath();
+    ctx.moveTo(a0.sx, a0.sy); ctx.lineTo(a1.sx, a1.sy); ctx.lineTo(b1.sx, b1.sy); ctx.lineTo(b0.sx, b0.sy); ctx.closePath(); ctx.fill();
+  };
+  const curbs = [-Wt / 2, Wt / 2]; if (mW) curbs.push(-mW / 2, mW / 2);
+  for (const yd of curbs) strip(yd - 0.09, yd + 0.09, "rgba(176,181,190,0.85)");          // bó vỉa 18 cm
+  const edgeIn = 0.25, pw0 = 0.12;                                                          // vạch sơn mép 12 cm
+  const paint = "rgba(236,239,244,0.62)";
+  strip(-Wt / 2 + edgeIn, -Wt / 2 + edgeIn + pw0, paint); strip(Wt / 2 - edgeIn - pw0, Wt / 2 - edgeIn, paint);
+  if (mW) { strip(-mW / 2 - edgeIn - pw0, -mW / 2 - edgeIn, paint); strip(mW / 2 + edgeIn, mW / 2 + edgeIn + pw0, paint); }
+  // vạch chia làn (đứt 4 m, cách 4 m) — bỏ vạch trùng dải phân cách
   const lanes = I.lanes || 2;
   for (let l = 1; l < lanes; l++) {
-    const yl = -W / 2 + W * l / lanes;
-    for (let x = 2; x < Xfar; x += 8) {
-      const p1 = proj(x, yl), p2 = proj(x + 4, yl);
-      ctx.strokeStyle = "rgba(235,238,243,0.55)"; ctx.lineWidth = Math.max(0.5, p1.s * 0.09);
-      ctx.beginPath(); ctx.moveTo(p1.sx, p1.sy); ctx.lineTo(p2.sx, p2.sy); ctx.stroke();
+    const yr = W * l / lanes;
+    if (mW && Math.abs(yr - W / 2) < 1e-6) continue;
+    const yl = LY.toDraw(yr);
+    for (let x = Math.floor(xBot / 8) * 8; x < Xfar; x += 8) strip(yl - pw0 / 2, yl + pw0 / 2, "rgba(232,236,242,0.5)", Math.max(x, xBot), x + 4);
+  }
+  // cây bụi thấp trên dải phân cách (đủ rộng mới trồng), vẽ xa trước
+  if (mW >= 1.2) {
+    for (let x = Math.floor(Xfar / 7) * 7; x >= 14; x -= 7) {
+      const p = proj(x, 0, 0.35); if (p.s < 0.15) continue;
+      const r = Math.max(1, Math.min(14, Math.min(mW * 0.22, 0.6) * p.s));
+      const t = Math.max(0, Math.min(1, sampleE(x, W / 2) / Emax));
+      const cc = mix([10, 22, 14], [58, 104, 52], t * 0.85);
+      ctx.fillStyle = `rgb(${cc[0] | 0},${cc[1] | 0},${cc[2] | 0})`;
+      ctx.beginPath(); ctx.ellipse(p.sx, p.sy, r, r * 0.7, 0, 0, 2 * Math.PI); ctx.fill();
     }
   }
 
   // --- trụ + cần + đèn (vẽ xa trước) ---
-  const sb3 = (I.setback != null && isFinite(I.setback)) ? Math.max(0, I.setback) : 0.5;
+  const sb3 = LY.sb;
   const poles = [];
   for (let k = 0; k <= Math.floor(Xfar / S) + 1; k++) {
-    poles.push({ x: k * S, poleLat: -(W / 2 + sb3), lampLat: ov - W / 2 });                       // hàng gần: trụ ngoài mép
-    if (two) poles.push({ x: k * S + (stag ? S / 2 : 0), poleLat: W / 2 + sb3, lampLat: W / 2 - ov }); // hàng xa
+    poles.push({ x: k * S, poleLat: -(Wt / 2 + sb3), lampLat: LY.toDraw(ov) });                        // hàng gần: trụ trên vỉa hè
+    if (two) poles.push({ x: k * S + (stag ? S / 2 : 0), poleLat: Wt / 2 + sb3, lampLat: LY.toDraw(W - ov) }); // hàng xa
   }
   poles.sort((a, b) => b.x - a.x);
   for (const p of poles) {
