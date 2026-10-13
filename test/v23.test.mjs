@@ -174,3 +174,15 @@ test("Excel kết quả: ước tính số bộ đèn tính đúng 'giữa' và 
   assert.equal(estimateLampCount(row, { spacing: 35, arrangement: "1 bên", perPole: 2 }).n, 40);
   assert.equal(estimateLampCount(row, { spacing: 35, arrangement: "hai bên" }).n, 40);
 });
+
+test("DIALux Cầu Bình Triệu 2: lưới E và lưới L (observer 1, 2) khớp từng điểm", () => {
+  const D = JSON.parse(readFileSync(join(here, "fixtures/dialux-cau-binh-trieu-2.json"), "utf8"));  // hàng 0 = y 12,278 m
+  const r = calcRoad({ ...BT2, detail: true }), g = r.grid;
+  const cmp = (Dg, v) => { let s = 0, mx = 0, n = 0;
+    for (let rr = 0; rr < 9; rr++) for (let i = 0; i < 12; i++) { const e = (v[i * g.nTrans + (8 - rr)] - Dg[rr][i]) / Dg[rr][i]; s += e; mx = Math.max(mx, Math.abs(e)); n++; }
+    return { mean: Math.abs(s / n), max: mx }; };
+  const e = cmp(D.E, r.Evals), l1 = cmp(D.L1, r.observers[0].Lvals), l2 = cmp(D.L2, r.observers[1].Lvals);
+  assert.ok(e.mean < 0.005 && e.max < 0.05, `E ${JSON.stringify(e)}`);
+  assert.ok(l1.mean < 0.01 && l1.max < 0.07, `L1 ${JSON.stringify(l1)}`);
+  assert.ok(l2.mean < 0.01 && l2.max < 0.07, `L2 ${JSON.stringify(l2)}`);
+});
