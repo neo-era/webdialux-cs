@@ -104,7 +104,8 @@ test("3D: có dải phân cách → giữa ảnh gần là màu dải (xanh cỏ
   const pix = async (url, x, y) => {
     const img = await loadImage(Buffer.from(url.split(",")[1], "base64"));
     const cv = createCanvas(img.width, img.height); const cx = cv.getContext("2d"); cx.drawImage(img, 0, 0);
-    return cx.getImageData(x, y, 1, 1).data;
+    const K = img.width / 840;                                          // ảnh 3D vẽ ở độ phân giải K× (toạ độ thử theo khung logic 840 × 400)
+    return cx.getImageData(Math.round(x * K), Math.round(y * K), 1, 1).data;
   };
   const input = { ...base, width: 14, lanes: 4, arrangement: "đối xứng", detail: true, setback: 1, sidewalk: 3 };
   const res = calcRoad(input);

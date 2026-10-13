@@ -2,6 +2,8 @@
 // trụ/cần/đèn đúng toạ độ, cao độ, hướng chiếu từng đèn. Camera quỹ đạo (xoay/nghiêng/thu phóng) quanh tâm khu vực.
 import { poleLamps, lampToLum } from "./area.mjs";
 import { worldBounds } from "./areaDraw.mjs";
+import { liveLums, segmentBlocked } from "./arch.mjs";
+import { illuminanceAtPoint } from "./photometry.mjs";
 
 const DEG = Math.PI / 180;
 const sub = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
@@ -45,7 +47,7 @@ export function makeProjector(cam, Wpx, Hpx) {
     }
     return out.length >= 2 ? out.map(S) : null;
   };
-  return { C, f, poly, P: (x, y, z = 0) => { const q = V(x, y, z); return q[2] < NEAR ? null : S(q); } };
+  return { C, f, cx, cy, fwd, right, up, poly, P: (x, y, z = 0) => { const q = V(x, y, z); return q[2] < NEAR ? null : S(q); } };
 }
 
 function cctRGB(K = 4000) {                                    // nhiệt độ màu → RGB (xấp xỉ Tanner Helland)
@@ -55,189 +57,246 @@ function cctRGB(K = 4000) {                                    // nhiệt độ 
   return [r, g, b].map((v) => Math.max(0, Math.min(255, v)));
 }
 
-/**
- * Vẽ phối cảnh 3D. state: {poles, areas}; result: calcArea (có thể null). opts: {cam, px (hệ số điểm ảnh), labels, cct}.
- * Trả {cam, range:[lo,hi]}.
- */
-const colorCache = new WeakMap();                               // màu ô theo kết quả tính — tính 1 lần, dùng lại khi xoay
-export function rampCss(cct = 4000) {                             // dải màu chú giải khớp đúng thang tô 3D
+export function rampCss(cct = 4000) {                             // dải màu chú giải khớp thang tô 3D (tối → màu đèn → trắng)
   const LC = cctRGB(cct), mix = (A, B, u) => A.map((v, i) => Math.round(v + (B[i] - v) * u));
-  const st = [[0, [32, 36, 44]], [30, mix([32, 36, 44], LC, 0.4)], [65, mix([32, 36, 44], LC, 0.82)], [90, LC.map(Math.round)], [100, mix(LC, [255, 252, 245], 0.55)]];
+  const st = [[0, [12, 14, 20]], [35, mix([12, 14, 20], LC, 0.45)], [75, LC.map(Math.round)], [100, mix(LC, [255, 252, 245], 0.6)]];
   return st.map(([p, c]) => `rgb(${c.join(",")}) ${p}%`).join(",");
 }
-export function drawArea3D(ctx, Wpx, Hpx, { poles, areas, result = null, objects = [], arch = null }, opts = {}) {
-  const k = opts.px || 1, cam = opts.cam || defaultCamera(poles, areas, objects);
-  const pr = makeProjector(cam, Wpx, Hpx), P = pr.P;
-  const LC = cctRGB(opts.cct || 4000), white = [255, 252, 245], ground = [20, 24, 30];
-  const mix = (A, B, u) => [A[0] + (B[0] - A[0]) * u, A[1] + (B[1] - A[1]) * u, A[2] + (B[2] - A[2]) * u];
-  const ramp = (t) => { t = Math.max(0, Math.min(1, t));
-    const st = [[0, [32, 36, 44]], [0.3, mix([32, 36, 44], LC, 0.4)], [0.65, mix([32, 36, 44], LC, 0.82)], [0.9, LC], [1, mix(LC, white, 0.55)]];
-    for (let i = 0; i < st.length - 1; i++) if (t <= st[i + 1][0]) { const u = (t - st[i][0]) / (st[i + 1][0] - st[i][0]); return mix(st[i][1], st[i + 1][1], u); }
-    return st[st.length - 1][1]; };
 
-  // bầu trời đêm
-  ctx.save();
-  const sky = ctx.createLinearGradient(0, 0, 0, Hpx);
-  sky.addColorStop(0, "#060b18"); sky.addColorStop(0.55, "#111c30"); sky.addColorStop(1, "#1b2738");
-  ctx.fillStyle = sky; ctx.fillRect(0, 0, Wpx, Hpx);
-  ctx.fillStyle = "rgba(255,255,255,0.65)";
-  for (let i = 0; i < 60; i++) { ctx.globalAlpha = 0.25 + ((i * 7) % 10) / 16; ctx.fillRect((i * 137.5) % Wpx, (i * 61.7) % (Hpx * 0.35), 1.3 * k, 1.3 * k); }
-  ctx.globalAlpha = 1;
-
-  // mặt đất xung quanh (tấm nền tối + lưới 5 m)
-  const b0 = worldBounds(poles, areas, 0, objects), ext = Math.max(b0.x1 - b0.x0, b0.y1 - b0.y0, 20) * 1.5;
-  const b = { x0: b0.x0 - ext, y0: b0.y0 - ext, x1: b0.x1 + ext, y1: b0.y1 + ext };
-  const quad = (pts, fill, stroke, closed = true) => {
-    const s = pr.poly(pts); if (!s) return false;
-    ctx.beginPath(); s.forEach(([sx, sy], i) => (i ? ctx.lineTo(sx, sy) : ctx.moveTo(sx, sy))); if (closed) ctx.closePath();
-    if (fill) { ctx.fillStyle = fill; ctx.fill(); } if (stroke) { ctx.strokeStyle = stroke; ctx.stroke(); } return true;
-  };
-  quad([[b.x0, b.y0], [b.x1, b.y0], [b.x1, b.y1], [b.x0, b.y1]], `rgb(${ground.join(",")})`);
-  ctx.lineWidth = 0.6 * k;
-  if (!opts.fast) {
-    for (let x = Math.ceil(b.x0 / 5) * 5; x <= b.x1; x += 5) quad([[x, b.y0], [x, b.y1]], null, "rgba(120,140,170,0.10)", false);
-    for (let y = Math.ceil(b.y0 / 5) * 5; y <= b.y1; y += 5) quad([[b.x0, y], [b.x1, y]], null, "rgba(120,140,170,0.10)", false);
+// ------------------------------------------------------------------ trường độ rọi mặt đất toàn cảnh (cùng engine)
+const fieldCache = new WeakMap();
+function groundField(state, key, MF) {
+  if (key && fieldCache.has(key)) return fieldCache.get(key);
+  const { poles, areas = [], objects = [] } = state;
+  const b0 = worldBounds(poles, areas, 0, objects), span = Math.max(b0.x1 - b0.x0, b0.y1 - b0.y0, 20), pad = Math.max(15, span * 0.35);
+  const x0 = b0.x0 - pad, y0 = b0.y0 - pad, Wd = b0.x1 - b0.x0 + 2 * pad, Hd = b0.y1 - b0.y0 + 2 * pad;
+  const step = Math.max(0.4, Math.sqrt(Wd * Hd / 30000));
+  const nx = Math.ceil(Wd / step) + 1, ny = Math.ceil(Hd / step) + 1;
+  const lums = liveLums(poles), occ = (objects || []).filter((o) => o.type !== "tree");
+  const E = new Float32Array(nx * ny);
+  for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) {
+    const P = { x: x0 + i * step, y: y0 + j * step };
+    let e = 0;
+    for (const { L, I } of lums) {
+      const v = illuminanceAtPoint(P, [L], I, MF);
+      if (v > 0 && (!occ.length || !segmentBlocked({ x: P.x, y: P.y, z: 0.01 }, { x: L.x, y: L.y, z: L.H }, occ))) e += v;
+    }
+    E[j * nx + i] = e;
   }
+  // vùng có MF riêng (khai trong Excel): mặt đất trong vùng đó dùng đúng MF của vùng như kết quả tính
+  for (const a of areas) {
+    if (a.MF == null || !(MF > 0)) continue;
+    const k = a.MF / MF, Q = a.poly || null;
+    for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) {
+      const x = x0 + i * step, y = y0 + j * step;
+      const inside = Q ? (() => { let c = false; for (let m = 0, n = Q.length - 1; m < Q.length; n = m++) { const [xi, yi] = Q[m], [xj, yj] = Q[n]; if ((yi > y) !== (yj > y) && x < (xj - xi) * (y - yi) / (yj - yi) + xi) c = !c; } return c; })()
+        : x >= (a.x0 || 0) && x <= (a.x0 || 0) + a.L && y >= (a.y0 || 0) && y <= (a.y0 || 0) + a.W;
+      if (inside) E[j * nx + i] *= k;
+    }
+  }
+  const f = { x0, y0, step, nx, ny, E };
+  if (key) fieldCache.set(key, f);
+  return f;
+}
+const sampleField = (f, x, y) => {
+  const fx = (x - f.x0) / f.step, fy = (y - f.y0) / f.step;
+  if (fx < 0 || fy < 0 || fx > f.nx - 1 || fy > f.ny - 1) return 0;
+  const i = Math.min(f.nx - 2, Math.floor(fx)), j = Math.min(f.ny - 2, Math.floor(fy)), tx = fx - i, ty = fy - j, E = f.E, n = f.nx;
+  const a = E[j * n + i] + (E[j * n + i + 1] - E[j * n + i]) * tx, b = E[(j + 1) * n + i] + (E[(j + 1) * n + i + 1] - E[(j + 1) * n + i]) * tx;
+  return a + (b - a) * ty;
+};
 
-  // các vùng: tô từng ô lưới theo E (vẽ xa trước)
+/**
+ * Phối cảnh 3D ban đêm — DÒ TIA từng điểm ảnh: mặt đất (trường độ rọi toàn cảnh), mặt đứng, mái, tán cây.
+ * Độ sáng hiển thị theo độ chói L = ρ·E/π (nội suy mượt, khử răng cưa), cộng ánh trời mờ để thấy hình khối.
+ * state: {poles, areas, objects, arch, result}; opts: {cam, px, fast, ss, fieldKey, MF, cct, labels}. Trả {cam, range, p95}.
+ */
+export function drawArea3D(ctx, Wpx, Hpx, state, opts = {}) {
+  const { poles, areas = [], result = null, objects = [], arch = null } = state;
+  const k = opts.px || 1, cam = opts.cam || defaultCamera(poles, areas, objects);
+  const pr = makeProjector(cam, Wpx, Hpx), P = pr.P, C = pr.C, F = pr.fwd, R = pr.right, U = pr.up;
+  const LC = cctRGB(opts.cct || 4000).map((v) => v / 255);
+  const field = groundField(state, opts.fieldKey || null, opts.MF ?? 0.8);
+  const RHO_G = 0.2;
+
+  // ---- bề mặt vật thể cho dò tia (kèm khung bao trên màn hình để lọc nhanh)
+  const sbox = (pts3) => {
+    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+    for (const [x, y, z] of pts3) { const q = P(x, y, z); if (!q) return [-Infinity, -Infinity, Infinity, Infinity]; x0 = Math.min(x0, q[0]); y0 = Math.min(y0, q[1]); x1 = Math.max(x1, q[0]); y1 = Math.max(y1, q[1]); }
+    return [x0 - 2, y0 - 2, x1 + 2, y1 + 2];
+  };
+  const faces = [], roofs = [], crowns = [];
+  if (arch) for (const f of arch.surfaces) {
+    if (f.kind === "face") {
+      const L = Math.hypot(f.B[0] - f.A[0], f.B[1] - f.A[1]), ux = (f.B[0] - f.A[0]) / L, uy = (f.B[1] - f.A[1]) / L;
+      faces.push({ f, ux, uy, L, H: f.height, dbl: false, box: sbox([[f.A[0], f.A[1], 0], [f.B[0], f.B[1], 0], [f.A[0], f.A[1], f.height], [f.B[0], f.B[1], f.height]]) });
+    } else if (f.kind === "crown") {
+      const rows = []; f.points.forEach((p, i) => { (rows[p.lat] = rows[p.lat] || []).push([p.lon, p.nLon, f.E[i]]); });
+      const [cx, cy, cz] = f.center;
+      crowns.push({ f, rows, c: f.center, R: f.R, box: sbox([[cx - f.R, cy - f.R, cz - f.R], [cx + f.R, cy + f.R, cz + f.R], [cx - f.R, cy + f.R, cz + f.R], [cx + f.R, cy - f.R, cz - f.R], [cx - f.R, cy - f.R, cz + f.R], [cx + f.R, cy + f.R, cz - f.R]]) });
+    }
+  }
+  for (const o of objects) if (o.type === "building") roofs.push({ o, box: sbox(o.pts.map(([x, y]) => [x, y, o.H])) });
+  const inPoly = (x, y, Q) => { let c = false; for (let i = 0, j = Q.length - 1; i < Q.length; j = i++) { const [xi, yi] = Q[i], [xj, yj] = Q[j]; if ((yi > y) !== (yj > y) && x < (xj - xi) * (y - yi) / (yj - yi) + xi) c = !c; } return c; };
+
+  // ---- thang hiển thị: phân vị 95% của độ chói các bề mặt (không để điểm sát chân đèn làm tối cả cảnh)
+  const Ls = [];
+  for (let i = 0; i < field.E.length; i += Math.max(1, Math.floor(field.E.length / 6000))) if (field.E[i] > 0) Ls.push(RHO_G * field.E[i] / Math.PI);
+  if (arch) for (const f of arch.surfaces) for (let i = 0; i < f.E.length; i += Math.max(1, Math.floor(f.E.length / 1500))) Ls.push(f.rho * f.E[i] / Math.PI);
+  Ls.sort((a, b) => a - b);
+  const Lref = Ls.length ? Math.max(0.03, Ls[Math.floor(Ls.length * 0.95)]) : 1;
   let lo = Infinity, hi = -Infinity;
   if (result) for (const a of result.areas) if (!a.empty) { lo = Math.min(lo, a.Emin); hi = Math.max(hi, a.Emax); }
   if (arch) for (const f of arch.surfaces) if (f.E.length) { lo = Math.min(lo, f.Emin); hi = Math.max(hi, f.Emax); }
   if (!isFinite(lo)) { lo = 0; hi = 0; }
-  // thang tô: chuẩn theo phân vị 95% (không để vài điểm sát chân đèn làm tối cả cảnh), nén gamma 0,7 như mắt cảm nhận
-  const all = [];
-  if (result) for (const a of result.areas) if (!a.empty) for (let i = 0; i < a.E.length; i += Math.max(1, Math.floor(a.E.length / 4000))) all.push(a.E[i]);
-  if (arch) for (const f of arch.surfaces) for (let i = 0; i < f.E.length; i += Math.max(1, Math.floor(f.E.length / 2000))) all.push(f.E[i]);
-  all.sort((x, y) => x - y);
-  const p95 = all.length ? Math.max(1e-6, all[Math.min(all.length - 1, Math.floor(all.length * 0.95))]) : 1;
-  const tone = (e) => Math.pow(Math.max(0, Math.min(1, e / p95)), 0.7);
-  // ô lưới + màu: dựng 1 lần cho mỗi kết quả (WeakMap), khi xoay chỉ chiếu lại
-  const ck = `${opts.cct || 4000}|${p95}`;
-  let cache = result && colorCache.get(result);
-  if (result && (!cache || cache.ck !== ck)) {
-    const list = [];
-    for (const a of result.areas) {
-      if (a.empty) continue; const g = a.grid;
-      for (let j = 0; j < g.ny; j++) for (let i = 0; i < g.nx; i++) {
-        const c = g.cell[j * g.nx + i]; if (c < 0) continue;
-        const col = ramp(tone(a.E[c]));
-        list.push({ x0: g.x0 + g.dx * i, y0: g.y0 + g.dy * j, dx: g.dx, dy: g.dy, fill: `rgb(${col[0] | 0},${col[1] | 0},${col[2] | 0})`, d: 0 });
-      }
-    }
-    // bản thô (≤ ~3000 khối) để xoay mượt: gộp b×b ô, màu theo E trung bình
-    const total = result.areas.reduce((n, a) => n + (a.empty ? 0 : a.E.length), 0), f = Math.max(1, Math.ceil(Math.sqrt(total / 3000)));
-    let coarse = list;
-    if (f > 1) {
-      coarse = [];
-      for (const a of result.areas) {
-        if (a.empty) continue; const g = a.grid;
-        for (let J = 0; J < g.ny; J += f) for (let I = 0; I < g.nx; I += f) {
-          let sum = 0, n = 0;
-          for (let j = J; j < Math.min(g.ny, J + f); j++) for (let i = I; i < Math.min(g.nx, I + f); i++) { const c = g.cell[j * g.nx + i]; if (c >= 0) { sum += a.E[c]; n++; } }
-          if (!n) continue;
-          const col = ramp(tone(sum / n));
-          coarse.push({ x0: g.x0 + g.dx * I, y0: g.y0 + g.dy * J, dx: g.dx * Math.min(f, g.nx - I), dy: g.dy * Math.min(f, g.ny - J), fill: `rgb(${col[0] | 0},${col[1] | 0},${col[2] | 0})`, d: 0 });
-        }
-      }
-    }
-    cache = { ck, list, coarse }; colorCache.set(result, cache);
-  }
-  const items = [];                                                  // đa giác 3D cần vẽ (sắp theo độ sâu, vẽ xa trước)
-  const Cm = pr.C;
-  if (cache) for (const c of (opts.fast ? cache.coarse : cache.list))
-    items.push({ q: [[c.x0, c.y0, 0], [c.x0 + c.dx, c.y0, 0], [c.x0 + c.dx, c.y0 + c.dy, 0], [c.x0, c.y0 + c.dy, 0]], fill: c.fill, seam: !opts.fast });
-  // bề mặt vật thể (tô theo độ rọi đã tính); mặt quay lưng camera thì bỏ
-  const colE = (e) => { const c = ramp(tone(e)); return `rgb(${c[0] | 0},${c[1] | 0},${c[2] | 0})`; };
-  if (arch) for (const f of arch.surfaces) {
-    if (f.kind === "face") {
-      const mx = (f.A[0] + f.B[0]) / 2, my = (f.A[1] + f.B[1]) / 2;
-      if ((Cm[0] - mx) * f.n[0] + (Cm[1] - my) * f.n[1] <= 0) continue;
-      const ux = (f.B[0] - f.A[0]) / f.nu, uy = (f.B[1] - f.A[1]) / f.nu;
-      for (let j = 0; j < f.nv; j++) for (let i = 0; i < f.nu; i++) {
-        const x0 = f.A[0] + ux * i, y0 = f.A[1] + uy * i, z0 = f.dv * j, z1 = z0 + f.dv;
-        items.push({ q: [[x0, y0, z0], [x0 + ux, y0 + uy, z0], [x0 + ux, y0 + uy, z1], [x0, y0, z1]], fill: colE(f.E[j * f.nu + i]), seam: true });
-      }
-    } else if (f.kind === "crown") {
-      const [cx, cy, cz] = f.center, R = f.R, n = f.nLat;
-      f.points.forEach((p, i) => {
-        if ((Cm[0] - p.x) * p.n[0] + (Cm[1] - p.y) * p.n[1] + (Cm[2] - p.z) * p.n[2] <= 0) return;
-        const t0 = Math.PI * p.lat / n, t1 = Math.PI * (p.lat + 1) / n, f0 = 2 * Math.PI * p.lon / p.nLon, f1 = 2 * Math.PI * (p.lon + 1) / p.nLon;
-        const S3 = (t, ph) => [cx + R * Math.sin(t) * Math.cos(ph), cy + R * Math.sin(t) * Math.sin(ph), cz + R * Math.cos(t)];
-        const e = f.E[i], c = ramp(tone(e)), leaf = [26, 54, 30];
-        const g = [leaf[0] + (c[0] - leaf[0]) * 0.75, leaf[1] + (c[1] - leaf[1]) * 0.85, leaf[2] + (c[2] - leaf[2]) * 0.6];   // ánh xanh lá
-        items.push({ q: [S3(t0, f0), S3(t0, f1), S3(t1, f1), S3(t1, f0)], fill: `rgb(${g[0] | 0},${g[1] | 0},${g[2] | 0})`, seam: true });
-      });
-    }
-  }
-  for (const o of objects || []) {
-    if (o.type === "building") items.push({ q: o.pts.map(([x, y]) => [x, y, o.H]), fill: "rgb(30,33,40)", stroke: "rgba(150,160,175,0.35)" });   // mái
-    if (o.type === "wall") for (let i = 0; i + 1 < o.pts.length; i++) {                                                        // đỉnh tường
-      const [A, B] = [o.pts[i], o.pts[i + 1]]; items.push({ q: [[A[0], A[1], o.H], [B[0], B[1], o.H]], line: "rgba(190,195,205,0.7)", w: 1.6 * k });
-    }
-    if (o.type === "tree") { const [x, y] = o.pts[0], R = o.crownR || Math.max(0.5, o.H / 3); items.push({ q: [[x, y, 0], [x, y, o.H - 2 * R + 0.2]], line: "#4a3a2a", w: Math.max(2, 3 * k) }); }
-  }
-  for (const it of items) { let dz = 0; for (const p of it.q) { const v = [p[0] - Cm[0], p[1] - Cm[1], p[2] - Cm[2]]; dz += Math.hypot(...v); } it.d = dz / it.q.length; }
-  items.sort((p, q) => q.d - p.d);
-  ctx.lineWidth = 0.8;
-  for (const it of items) {
-    const s2 = pr.poly(it.q); if (!s2) continue;
-    ctx.beginPath(); ctx.moveTo(s2[0][0], s2[0][1]); for (let n = 1; n < s2.length; n++) ctx.lineTo(s2[n][0], s2[n][1]);
-    if (it.line) { ctx.strokeStyle = it.line; ctx.lineWidth = it.w; ctx.stroke(); ctx.lineWidth = 0.8; continue; }
-    ctx.closePath(); ctx.fillStyle = it.fill; ctx.fill();
-    if (it.stroke) { ctx.strokeStyle = it.stroke; ctx.stroke(); } else if (it.seam) { ctx.strokeStyle = it.fill; ctx.stroke(); }   // khử khe hở giữa ô
-  }
-  // viền vùng + tên
-  ctx.lineWidth = 1.4 * k; ctx.font = `600 ${11.5 * k}px sans-serif`; ctx.textAlign = "center";
-  const placed = [];                                               // nhãn đã đặt — đẩy xuống nếu chồng nhau
-  areas.forEach((a, n) => {
-    const pts = a.poly || [[a.x0 || 0, a.y0 || 0], [(a.x0 || 0) + a.L, a.y0 || 0], [(a.x0 || 0) + a.L, (a.y0 || 0) + a.W], [a.x0 || 0, (a.y0 || 0) + a.W]];
-    quad(pts.map(([x, y]) => [x, y, 0.02]), null, "rgba(255,255,255,0.55)");
-    if (opts.labels !== false) {
-      const cx = pts.reduce((s, p) => s + p[0], 0) / pts.length, cy = pts.reduce((s, p) => s + p[1], 0) / pts.length, q = P(cx, cy, 0.1);
-      if (q) { const t = a.name || `Vùng ${n + 1}`, w = ctx.measureText(t).width;
-        let ly = q[1];
-        const hitL = () => placed.some((r) => Math.abs(r[0] - q[0]) < (r[2] + w) / 2 + 8 * k && Math.abs(r[1] - ly) < 17 * k);
-        for (let tries = 0; tries < 8 && hitL(); tries++) ly += 18 * k;
-        placed.push([q[0], ly, w]);
-        ctx.fillStyle = "rgba(8,12,22,0.62)"; ctx.fillRect(q[0] - w / 2 - 5 * k, ly - 12 * k, w + 10 * k, 16 * k);
-        ctx.fillStyle = "#e8edf5"; ctx.fillText(t, q[0], ly); }
-    }
-  });
 
-  // trụ + cần + đèn (vẽ xa trước), quầng sáng và chùm sáng mờ
-  const poleOrder = poles.map((p) => ({ p, d: (P(p.x, p.y) || [0, 0, 1e9])[2] })).sort((a, b) => b.d - a.d);
-  ctx.globalCompositeOperation = "lighter";
-  for (const { p } of poleOrder) for (const l of poleLamps(p)) {           // chùm sáng: nón mờ từ đèn xuống điểm ngắm
-    if (!l.ies) continue;
-    // trục quang theo hướng + nghiêng (0° xuống, 90° ngang, 180° lên); chùm đi tới mặt đất, hoặc dài 8 m nếu hắt ngang/lên
-    const L = lampToLum(p, l), a = (l.aim || 0) * DEG, t = (l.tilt || 0) * DEG;
-    const dir = [Math.sin(t) * Math.cos(a), Math.sin(t) * Math.sin(a), -Math.cos(t)];
-    const len = dir[2] < -0.3 ? Math.min(40, L.H / -dir[2]) : 8, rad = Math.max(1.2, len * 0.42);
-    const ex = L.x + dir[0] * len, ey = L.y + dir[1] * len, ez = Math.max(0, L.H + dir[2] * len);
-    const top = P(L.x, L.y, L.H), g1 = P(ex - rad * Math.sin(a), ey + rad * Math.cos(a), ez), g2 = P(ex + rad * Math.sin(a), ey - rad * Math.cos(a), ez);
-    if (!top || !g1 || !g2) continue;
-    const gr = ctx.createLinearGradient(top[0], top[1], (g1[0] + g2[0]) / 2, (g1[1] + g2[1]) / 2);
-    gr.addColorStop(0, `rgba(${LC.map((v) => v | 0).join(",")},0.20)`); gr.addColorStop(1, `rgba(${LC.map((v) => v | 0).join(",")},0)`);
-    ctx.fillStyle = gr; ctx.beginPath(); ctx.moveTo(top[0], top[1]); ctx.lineTo(g1[0], g1[1]); ctx.lineTo(g2[0], g2[1]); ctx.closePath(); ctx.fill();
-  }
-  ctx.globalCompositeOperation = "source-over";
-  for (const { p } of poleOrder) {
-    const base = P(p.x, p.y), topP = P(p.x, p.y, p.H); if (!base || !topP) continue;
-    const s = pr.f / base[2];                                         // px trên 1 m tại chân trụ
-    ctx.strokeStyle = "#9aa4b2"; ctx.lineWidth = Math.max(1.2 * k, Math.min(6 * k, 0.16 * s)); ctx.lineCap = "round";
-    ctx.beginPath(); ctx.moveTo(base[0], base[1]); ctx.lineTo(topP[0], topP[1]); ctx.stroke();
-    for (const l of poleLamps(p)) {
-      const L = lampToLum(p, l), hd = P(L.x, L.y, L.H), at = P(p.x, p.y, L.H); if (!hd || !at) continue;
-      ctx.lineWidth = Math.max(1 * k, Math.min(4 * k, 0.09 * s)); ctx.beginPath(); ctx.moveTo(at[0], at[1]); ctx.lineTo(hd[0], hd[1]); ctx.stroke();
-      if (Math.abs(L.H - p.H) > 0.05) { const t2 = P(p.x, p.y, Math.max(p.H, L.H)); if (t2) { ctx.beginPath(); ctx.moveTo(topP[0], topP[1]); ctx.lineTo(t2[0], t2[1]); ctx.stroke(); } }
-      const r = Math.max(3 * k, Math.min(26 * k, 0.9 * pr.f / hd[2]));
-      const on = !!l.ies, col = on ? LC.map((v) => v | 0).join(",") : "192,57,43";
-      const gl = ctx.createRadialGradient(hd[0], hd[1], 0, hd[0], hd[1], r * 2.4);
-      gl.addColorStop(0, `rgba(255,255,250,${on ? 0.95 : 0.8})`); gl.addColorStop(0.25, `rgba(${col},${on ? 0.55 : 0.5})`); gl.addColorStop(1, `rgba(${col},0)`);
-      ctx.fillStyle = gl; ctx.beginPath(); ctx.arc(hd[0], hd[1], r * 2.4, 0, 2 * Math.PI); ctx.fill();
+  // màu ánh sáng: tối → màu đèn (CCT) → trắng khi quá sáng
+  const lit = (L, tint) => {
+    const t = Math.pow(Math.max(0, L / Lref), 0.62);
+    const base = Math.min(t, 1), over = Math.max(0, Math.min(0.85, (t - 1) / 1.6));      // quá sáng: chuyển dịu sang trắng, không cháy
+    return [(LC[0] * base * (1 - over) + over) * tint[0], (LC[1] * base * (1 - over) + over) * tint[1], (LC[2] * base * (1 - over) + over) * tint[2]];
+  };
+  const MOON = nrm([-0.35, 0.45, 0.82]);                            // ánh trời/trăng mờ để thấy hình khối
+  const span = Math.max(30, cam.dist * 2.2), HZ = [0.10, 0.13, 0.19];
+  const NOT = [1, 1, 1], LEAF = [0.62, 1.0, 0.55];
+
+  // ---- dò tia 1 tia
+  const trace = (dx, dy, dz, px, py) => {
+    let t = Infinity, kind = 0, obj = null, extra = 0;
+    if (dz < -1e-6) { t = -C[2] / dz; kind = 1; }                                       // mặt đất
+    for (const fc of faces) {
+      const b = fc.box; if (px < b[0] || px > b[2] || py < b[1] || py > b[3]) continue;
+      const n = fc.f.n, den = dx * n[0] + dy * n[1]; if (Math.abs(den) < 1e-9 || (!fc.dbl && den >= 0)) continue;
+      const tt = ((fc.f.A[0] - C[0]) * n[0] + (fc.f.A[1] - C[1]) * n[1]) / den; if (tt <= 0 || tt >= t) continue;
+      const hx = C[0] + dx * tt, hy = C[1] + dy * tt, hz = C[2] + dz * tt, u = (hx - fc.f.A[0]) * fc.ux + (hy - fc.f.A[1]) * fc.uy;
+      if (u < 0 || u > fc.L || hz < 0 || hz > fc.H) continue;
+      t = tt; kind = 2; obj = fc; extra = u;
     }
-    if (opts.labels !== false) { ctx.fillStyle = "#cfd6e2"; ctx.font = `bold ${10.5 * k}px sans-serif`; ctx.textAlign = "center"; ctx.fillText(p.id, topP[0], topP[1] - 9 * k); }
+    for (const rf of roofs) {
+      const b = rf.box; if (px < b[0] || px > b[2] || py < b[1] || py > b[3] || Math.abs(dz) < 1e-9) continue;
+      const tt = (rf.o.H - C[2]) / dz; if (tt <= 0 || tt >= t) continue;
+      if (inPoly(C[0] + dx * tt, C[1] + dy * tt, rf.o.pts)) { t = tt; kind = 3; obj = rf; }
+    }
+    for (const cr of crowns) {
+      const b = cr.box; if (px < b[0] || px > b[2] || py < b[1] || py > b[3]) continue;
+      const ox = C[0] - cr.c[0], oy = C[1] - cr.c[1], oz = C[2] - cr.c[2], bb = ox * dx + oy * dy + oz * dz, cc = ox * ox + oy * oy + oz * oz - cr.R * cr.R, disc = bb * bb - cc;
+      if (disc < 0) continue; const tt = -bb - Math.sqrt(disc); if (tt <= 0 || tt >= t) continue;
+      if (C[2] + dz * tt < 0) continue; t = tt; kind = 4; obj = cr;
+    }
+    if (kind === 0) return null;
+    const hx = C[0] + dx * t, hy = C[1] + dy * t, hz = C[2] + dz * t;
+    let rgb, nz = 1, nx = 0, ny = 0;
+    if (kind === 1) { const E = sampleField(field, hx, hy); rgb = lit(RHO_G * E / Math.PI, NOT); nz = 1; }
+    else if (kind === 2) {
+      const f = obj.f, fu = Math.max(0, Math.min(f.nu - 1, extra / f.du - 0.5)), fv = Math.max(0, Math.min(f.nv - 1, hz / f.dv - 0.5));
+      const i = Math.min(f.nu - 2, Math.floor(fu)), j = Math.min(f.nv - 2, Math.floor(fv));
+      let E;
+      if (f.nu < 2 || f.nv < 2) E = f.E[Math.round(fv) * f.nu + Math.round(fu)] || 0;
+      else { const tx = fu - i, ty = fv - j, e = f.E, n = f.nu; const a = e[j * n + i] + (e[j * n + i + 1] - e[j * n + i]) * tx, b2 = e[(j + 1) * n + i] + (e[(j + 1) * n + i + 1] - e[(j + 1) * n + i]) * tx; E = a + (b2 - a) * ty; }
+      rgb = lit(f.rho * E / Math.PI, NOT); nx = f.n[0]; ny = f.n[1]; nz = 0;
+    } else if (kind === 3) { rgb = [0, 0, 0]; nz = 1; }
+    else {
+      const cr = obj, vx = (hx - cr.c[0]) / cr.R, vy = (hy - cr.c[1]) / cr.R, vz = (hz - cr.c[2]) / cr.R; nx = vx; ny = vy; nz = vz;
+      const th = Math.acos(Math.max(-1, Math.min(1, vz))), ph = (Math.atan2(vy, vx) + 2 * Math.PI) % (2 * Math.PI);
+      const fl = th / Math.PI * cr.f.nLat - 0.5, j0 = Math.max(0, Math.floor(fl)), tj = Math.max(0, Math.min(1, fl - j0));
+      const rowE = (j) => { const r = cr.rows[Math.max(0, Math.min(cr.rows.length - 1, j))]; if (!r || !r.length) return 0; const n = r[0][1], fi = ph / (2 * Math.PI) * n - 0.5, i0 = ((Math.floor(fi) % n) + n) % n, ti = fi - Math.floor(fi); const a = r.find((q) => q[0] === i0), b2 = r.find((q) => q[0] === (i0 + 1) % n); return (a ? a[2] : 0) * (1 - ti) + (b2 ? b2[2] : a ? a[2] : 0) * ti; };
+      const E = rowE(j0) * (1 - tj) + rowE(j0 + 1) * tj;
+      rgb = lit(cr.f.rho * E / Math.PI * 1.6, LEAF);                  // tán lá: tán xạ nhiều lớp nên trông sáng hơn ρ đơn lớp
+    }
+    // ánh trời mờ: khối đặc thấy rõ hình, mặt đất tối xanh
+    const sky = Math.max(0, nx * MOON[0] + ny * MOON[1] + nz * MOON[2]);
+    const amb = kind === 1 ? [0.035, 0.042, 0.06] : kind === 4 ? [0.03, 0.06, 0.035] : kind === 3 ? [0.05, 0.055, 0.07] : [0.045, 0.05, 0.065];
+    const a2 = 0.55 + 0.75 * sky;
+    let out = [rgb[0] + amb[0] * a2, rgb[1] + amb[1] * a2, rgb[2] + amb[2] * a2];
+    const fog = 1 - Math.exp(-t / span);                                                  // xa thì hoà vào chân trời
+    out = [out[0] * (1 - fog * 0.85) + HZ[0] * fog * 0.85, out[1] * (1 - fog * 0.85) + HZ[1] * fog * 0.85, out[2] * (1 - fog * 0.85) + HZ[2] * fog * 0.85];
+    return [out[0], out[1], out[2], t];
+  };
+
+  // ---- bầu trời
+  ctx.save();
+  const sky = ctx.createLinearGradient(0, 0, 0, Hpx);
+  sky.addColorStop(0, "#04070f"); sky.addColorStop(0.5, "#0b1426"); sky.addColorStop(1, "#1a2538");
+  ctx.fillStyle = sky; ctx.fillRect(0, 0, Wpx, Hpx);
+  ctx.fillStyle = "#ffffff";
+  for (let i = 0; i < 90; i++) { ctx.globalAlpha = 0.15 + ((i * 7) % 10) / 18; const r = (i % 7 === 0 ? 1.6 : 1.0) * k; ctx.fillRect((i * 137.5 + 31) % Wpx, (i * 61.7 + 7) % (Hpx * 0.45), r, r); }
+  ctx.globalAlpha = 1;
+
+  // ---- dò tia (khử răng cưa SS×SS; khi đang xoay: thưa 3 điểm ảnh)
+  const img = ctx.getImageData(0, 0, Wpx, Hpx), D = img.data, depth = new Float32Array(Wpx * Hpx).fill(Infinity);
+  const step = opts.fast ? 3 : 1, SS = opts.fast ? 1 : (opts.ss ?? (k >= 2 ? 1 : 2));
+  const toByte = (v) => Math.max(0, Math.min(255, Math.round(255 * Math.pow(Math.max(0, v), 1 / 1.25))));
+  for (let py = 0; py < Hpx; py += step) for (let px = 0; px < Wpx; px += step) {
+    let r = 0, g = 0, b = 0, hits = 0, dmin = Infinity;
+    for (let sy = 0; sy < SS; sy++) for (let sx = 0; sx < SS; sx++) {
+      const qx = px + (sx + 0.5) / SS * step, qy = py + (sy + 0.5) / SS * step;
+      const ax = (qx - pr.cx) / pr.f, ay = -(qy - pr.cy) / pr.f;
+      let dx = F[0] + R[0] * ax + U[0] * ay, dy = F[1] + R[1] * ax + U[1] * ay, dz = F[2] + R[2] * ax + U[2] * ay;
+      const l = Math.hypot(dx, dy, dz); dx /= l; dy /= l; dz /= l;
+      const hit = trace(dx, dy, dz, qx, qy);
+      if (hit) { r += hit[0]; g += hit[1]; b += hit[2]; hits++; dmin = Math.min(dmin, hit[3]); }
+    }
+    if (!hits) continue;
+    const n = SS * SS, cov = hits / n;
+    for (let yy = py; yy < Math.min(Hpx, py + step); yy++) for (let xx = px; xx < Math.min(Wpx, px + step); xx++) {
+      const o = (yy * Wpx + xx) * 4;
+      D[o] = D[o] * (1 - cov) + toByte(r / hits) * cov; D[o + 1] = D[o + 1] * (1 - cov) + toByte(g / hits) * cov; D[o + 2] = D[o + 2] * (1 - cov) + toByte(b / hits) * cov; D[o + 3] = 255;
+      depth[yy * Wpx + xx] = dmin;
+    }
+  }
+  ctx.putImageData(img, 0, 0);
+  if (opts.overlays === false) { ctx.restore(); return { cam, range: [lo, hi], p95: Lref }; }   // chỉ ảnh dò tia (dùng cho kiểm thử)
+
+  // ---- viền vùng tính (mảnh, mờ) + tên vùng
+  const visible = (x, y, z) => { const q = P(x, y, z); if (!q) return null; const ix = Math.round(q[0]), iy = Math.round(q[1]); if (ix < 0 || iy < 0 || ix >= Wpx || iy >= Hpx) return q;
+    const dd = Math.hypot(x - C[0], y - C[1], z - C[2]); return depth[iy * Wpx + ix] + 0.35 >= dd ? q : null; };
+  ctx.lineWidth = 1.1 * k; ctx.strokeStyle = "rgba(255,255,255,0.28)"; ctx.setLineDash([6 * k, 5 * k]);
+  for (const a of areas) {
+    const pts = a.poly || [[a.x0 || 0, a.y0 || 0], [(a.x0 || 0) + a.L, a.y0 || 0], [(a.x0 || 0) + a.L, (a.y0 || 0) + a.W], [a.x0 || 0, (a.y0 || 0) + a.W]];
+    const s2 = pr.poly(pts.map(([x, y]) => [x, y, 0.02])); if (!s2) continue;
+    ctx.beginPath(); s2.forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y))); ctx.closePath(); ctx.stroke();
+  }
+  ctx.setLineDash([]);
+  if (opts.labels !== false) {
+    ctx.font = `600 ${11 * k}px sans-serif`; ctx.textAlign = "center"; const placed = [];
+    for (const a of areas) {
+      const pts = a.poly || [[a.x0 || 0, a.y0 || 0], [(a.x0 || 0) + a.L, (a.y0 || 0) + a.W]];
+      const cx = pts.reduce((s2, p) => s2 + p[0], 0) / pts.length, cy = pts.reduce((s2, p) => s2 + p[1], 0) / pts.length, q = visible(cx, cy, 0.1);
+      if (!q) continue; const t = a.name || "", w = ctx.measureText(t).width; let ly = q[1];
+      for (let tries = 0; tries < 8 && placed.some((r) => Math.abs(r[0] - q[0]) < (r[2] + w) / 2 + 8 * k && Math.abs(r[1] - ly) < 17 * k); tries++) ly += 18 * k;
+      placed.push([q[0], ly, w]);
+      ctx.fillStyle = "rgba(6,10,20,0.55)"; ctx.fillRect(q[0] - w / 2 - 5 * k, ly - 12 * k, w + 10 * k, 16 * k);
+      ctx.fillStyle = "rgba(232,237,245,0.92)"; ctx.fillText(t, q[0], ly);
+    }
+  }
+
+  // ---- thân cây, trụ, cần, đèn (có che khuất theo bộ đệm độ sâu)
+  for (const o of objects) if (o.type === "tree") {
+    const [x, y] = o.pts[0], Rr = Math.min(o.H / 2, o.crownR || Math.max(0.5, o.H / 3)), b = visible(x, y, 0.05), top = P(x, y, Math.max(0.2, o.H - 2 * Rr));
+    if (!b || !top) continue; const s = pr.f / b[2];
+    ctx.strokeStyle = "#3a2c20"; ctx.lineWidth = Math.max(1.5 * k, Math.min(8 * k, 0.3 * s)); ctx.lineCap = "round";
+    ctx.beginPath(); ctx.moveTo(b[0], b[1]); ctx.lineTo(top[0], top[1]); ctx.stroke();
+  }
+  const order = poles.map((p) => ({ p, d: Math.hypot(p.x - C[0], p.y - C[1]) })).sort((a, b) => b.d - a.d);
+  for (const { p } of order) {
+    const base = visible(p.x, p.y, 0.05), topP = P(p.x, p.y, p.H); if (!topP) continue;
+    const s = pr.f / topP[2];
+    if (base && p.H > 0.2) {
+      ctx.strokeStyle = "#6f7987"; ctx.lineWidth = Math.max(1 * k, Math.min(6 * k, 0.15 * s)); ctx.lineCap = "round";
+      ctx.beginPath(); ctx.moveTo(base[0], base[1]); ctx.lineTo(topP[0], topP[1]); ctx.stroke();
+    }
+    for (const l of poleLamps(p)) {
+      const Lm = lampToLum(p, l), hd = visible(Lm.x, Lm.y, Math.max(0.05, Lm.H)), at = P(p.x, p.y, Lm.H);
+      if (!hd) continue;
+      if (base && at && (l.arm || 0) > 0.05) { ctx.lineWidth = Math.max(0.8 * k, Math.min(3.5 * k, 0.08 * s)); ctx.beginPath(); ctx.moveTo(at[0], at[1]); ctx.lineTo(hd[0], hd[1]); ctx.stroke(); }
+      const r = Math.max(2.2 * k, Math.min(22 * k, 0.55 * pr.f / hd[2])), on = !!l.ies, col = on ? LC.map((v) => (v * 255) | 0).join(",") : "220,70,60";
+      ctx.save(); ctx.globalCompositeOperation = "lighter";
+      const gl = ctx.createRadialGradient(hd[0], hd[1], 0, hd[0], hd[1], r * 3);
+      gl.addColorStop(0, `rgba(255,255,250,${on ? 0.95 : 0.7})`); gl.addColorStop(0.18, `rgba(${col},0.55)`); gl.addColorStop(1, `rgba(${col},0)`);
+      ctx.fillStyle = gl; ctx.beginPath(); ctx.arc(hd[0], hd[1], r * 3, 0, 2 * Math.PI); ctx.fill(); ctx.restore();
+    }
+    if (opts.labels !== false && opts.poleLabels !== false && base) { ctx.fillStyle = "rgba(205,214,226,0.6)"; ctx.font = `600 ${9.5 * k}px sans-serif`; ctx.textAlign = "center"; ctx.fillText(p.id, topP[0], topP[1] - 10 * k); }
   }
   ctx.restore();
-  return { cam, range: [lo, hi], p95 };
+  return { cam, range: [lo, hi], p95: Lref };
 }

@@ -223,3 +223,30 @@ test("Rà soát: điểm mặt đất trong chân nhà bị loại; đèn trong 
   assert.equal(t.req, null);
   assert.ok(t.points.every((p) => p.z >= 0) && Math.abs(t.R - 1) < 1e-9, "R kẹp ≤ H/2");
 });
+
+test("3D đường trong PDF: vẽ ở độ phân giải 2× (1680 × 800), JPEG", async () => {
+  const { createCanvas, loadImage } = await import("@napi-rs/canvas");
+  const { perspective3DDataURL } = await import("../src/report.mjs");
+  const { calcRoad } = await import("../src/engine.mjs");
+  const ph = parseIES(SLtxt), input = { ies: ph, H: 10, overhang: 1, spacing: 35, width: 10, lanes: 2, tilt: 10, arrangement: "1 bên", MF: 0.8, detail: true };
+  const url = perspective3DDataURL({ install: { ...input }, luminaire: { cct: 4000 } }, calcRoad(input), { createElement: () => createCanvas(10, 10) });
+  assert.match(url, /^data:image\/jpeg/);
+  const img = await loadImage(Buffer.from(url.split(",")[1], "base64"));
+  assert.deepEqual([img.width, img.height], [1680, 800]);
+});
+
+test("3D khu vực dò tia: mặt đất ngoài vùng tính cũng có vũng sáng dưới trụ (trường độ rọi toàn cảnh); ảnh mượt, không ô khối", async () => {
+  const { createCanvas } = await import("@napi-rs/canvas");
+  const s = sampleState("congvien", idxM), result = calcArea(s, { MF: 0.8 });
+  const cv = createCanvas(600, 340), ctx = cv.getContext("2d");
+  drawArea3D(ctx, 600, 340, { ...s, result }, { ss: 1, overlays: false });
+  const d = ctx.getImageData(0, 0, 600, 340).data;
+  // độ mượt: chênh lệch giữa điểm ảnh liền kề nhỏ ở phần lớn ảnh (ô khối sẽ tạo bậc lớn đều đặn)
+  let big = 0, n = 0;
+  for (let y = 120; y < 330; y++) for (let x = 1; x < 600; x++) { const o = (y * 600 + x) * 4, p = o - 4; n++; if (Math.abs(d[o] - d[p]) + Math.abs(d[o + 1] - d[p + 1]) + Math.abs(d[o + 2] - d[p + 2]) > 30) big++; }
+  assert.ok(big / n < 0.01, `bậc màu ${(100 * big / n).toFixed(2)}%`);
+  // vũng sáng dưới trụ V1 (ngoài mọi vùng tính) sáng hơn hẳn mặt đất xa trụ
+  const pr = (await import("../src/areaView3D.mjs")).makeProjector((await import("../src/areaView3D.mjs")).defaultCamera(s.poles, s.areas, []), 600, 340);
+  const at = (x, y) => { const q = pr.P(x, y, 0); const o = (Math.round(q[1]) * 600 + Math.round(q[0])) * 4; return d[o] + d[o + 1] + d[o + 2]; };
+  assert.ok(at(10, 24) > at(-8, 50) + 60, `${at(10, 24)} vs ${at(-8, 50)}`);
+});

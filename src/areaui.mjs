@@ -99,6 +99,7 @@ export function initAreaUI({ root, setStatus, getIes: getIesAll, getMF, saveXlsx
   function recalc(now = false) {
     clearTimeout(timer);
     const run = () => {
+      st.fieldKey = {};                                                // mặt đất 3D tính lại theo dữ liệu mới
       try { st.result = st.areas.length ? calcArea(st, { MF: getMF() }) : null; st.arch = st.objects.length ? calcArch(st, { MF: getMF() }) : null; if (st.tab === "obj") drawObjResults(); }
       catch (e) { st.result = null; setStatus("Lỗi tính khu vực: " + e.message, true); }
       drawPlan(); drawKpis();
@@ -407,7 +408,7 @@ export function initAreaUI({ root, setStatus, getIes: getIesAll, getMF, saveXlsx
     if (cv.width !== w || cv.height !== h) { cv.width = w; cv.height = h; }   // vẽ đúng độ phân giải màn hình → chữ rõ
     if (st.view3d) {
       if (!st.cam) st.cam = defaultCamera(st.poles, st.areas, st.objects);
-      const v3 = drawArea3D(cv.getContext("2d"), cv.width, cv.height, st, { cam: st.cam, px: dpr, fast: !!st.orbiting });
+      const v3 = drawArea3D(cv.getContext("2d"), cv.width, cv.height, st, { cam: st.cam, px: dpr, fast: !!st.orbiting, fieldKey: st.fieldKey || (st.fieldKey = {}), MF: getMF() });
       view = { range: v3.range, three: true };
     } else if (st.facade) {
       const vf = drawFacades(cv.getContext("2d"), cv.width, cv.height, st.arch, { objId: st.selObj, px: dpr, colors: colors() });
@@ -416,7 +417,7 @@ export function initAreaUI({ root, setStatus, getIes: getIesAll, getMF, saveXlsx
     const lg = root.querySelector("#avLegend");
     if (lg && (st.result || (st.facade && st.arch))) {
       const [lo, hi] = view.range, grad = view.three ? rampCss() : [0, .25, .5, .75, 1].map((t) => `rgb(${heatColor(t).join(",")}) ${t * 100}%`).join(",");
-      lg.innerHTML = `<span class="bar" style="background:linear-gradient(90deg,${grad})"></span><span>${f1(lo, 0)} – ${view.facade ? "≥ " : ""}${f1(hi, 0)} lx</span><span>· ${view.facade ? "độ rọi trên bề mặt (theo pháp tuyến)" : "độ rọi ngang duy trì"}${st.result ? ` · công suất ${f1(st.result.power / 1000, 2)} kW` : ""}</span>`;
+      lg.innerHTML = `<span class="bar" style="background:linear-gradient(90deg,${grad})"></span><span>${f1(lo, 0)} – ${view.facade ? "≥ " : ""}${f1(hi, 0)} lx</span><span>· ${view.facade ? "độ rọi trên bề mặt (theo pháp tuyến)" : view.three ? "3D: độ sáng hiển thị theo độ chói L = ρ·E/π (mặt đất ρ 0,2)" : "độ rọi ngang duy trì"}${st.result ? ` · công suất ${f1(st.result.power / 1000, 2)} kW` : ""}</span>`;
     }
   }
   function drawKpis() {
@@ -591,7 +592,7 @@ export function initAreaUI({ root, setStatus, getIes: getIesAll, getMF, saveXlsx
     const result = st.result || calcArea(st, { MF: getMF() });
     const arch = st.objects.length ? (st.arch || calcArch(st, { MF: getMF() })) : null;
     const doc = makeDoc({ jsPDF, font });
-    renderAreaPdf(doc, { state: st, result, arch, projectName: st.name || "Khu vực" });
+    renderAreaPdf(doc, { state: st, result, arch, projectName: st.name || "Khu vực", MF: getMF() });
     finalizeDoc(doc, { tail: "độ rọi ngang duy trì · TCVN 13608:2023 / EN 12193" });
     const blob = doc.output("blob");
     const a = Object.assign(document.createElement("a"), { href: URL.createObjectURL(blob), download: outName("BaoCao_KhuVuc", st.name || "khu_vuc", "pdf") });

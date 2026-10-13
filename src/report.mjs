@@ -375,13 +375,14 @@ export function cctToRGB(K) {
  * lưới độ rọi E đã tính (chiếu ngược từng pixel → toạ độ đường → lấy E, lặp theo nhịp).
  * Kèm thang màu lx. Đây là bản đồ kết quả thật trong phối cảnh, không phải minh hoạ.
  */
-export function perspective3DDataURL(d, result, doc = globalThis.document) {
+export function perspective3DDataURL(d, result, doc = globalThis.document, K = 2) {
   const I = d.install, W = I.width || 7, S = I.spacing || 30, H = I.H || 9, ov = I.overhang || 0;
   const LY = lateralLayout(I), Wt = LY.Wt, mW = LY.mW;
   const kindA = arrangementKind(I.arrangement), two = kindA === "opposite" || kindA === "staggered", stag = kindA === "staggered";
   const CW = 840, CH = 400, xNear = 6, Xfar = 220;
-  const cv = doc.createElement("canvas"); cv.width = CW; cv.height = CH;
-  const ctx = cv.getContext("2d");
+  // vẽ ở độ phân giải K× (mặc định 2× = 1680 × 800): nét vẽ theo toạ độ logic CW × CH, mặt đường tô theo từng điểm ảnh thật
+  const cv = doc.createElement("canvas"); cv.width = CW * K; cv.height = CH * K;
+  const ctx = cv.getContext("2d"); ctx.setTransform(K, 0, 0, K, 0, 0);
   // --- camera / phép chiếu pinhole (tầm mắt lái xe) ---
   const cx = CW / 2, horizonY = CH * 0.40, f = 620, hCam = 1.7, d0 = 10;
   const proj = (x, yLat, z = 0) => ({ sx: cx + f * yLat / (x + d0), sy: horizonY + f * (hCam - z) / (x + d0), s: f / (x + d0) });
@@ -445,13 +446,16 @@ export function perspective3DDataURL(d, result, doc = globalThis.document) {
   };
   const pave0 = [44, 45, 50], paveLit = mix(mix(LC, white, 0.25), [200, 198, 192], 0.35);   // gạch lát hè
   const grass0 = [16, 30, 20], grassLit = mix([70, 128, 64], LC, 0.25);                      // cỏ dải phân cách
-  const img = ctx.getImageData(0, 0, CW, CH); const px = img.data;
-  const y0 = Math.ceil(horizonY) + 1;
-  for (let sy = y0; sy < CH; sy++) {
+  const DW = CW * K, DH = CH * K;
+  const img = ctx.getImageData(0, 0, DW, DH); const px = img.data;
+  const y0 = Math.ceil(horizonY * K) + 1;
+  for (let dsy = y0; dsy < DH; dsy++) {
+    const sy = (dsy + 0.5) / K;
     const xw = f * hCam / (sy - horizonY) - d0;        // khoảng cách dọc đường
     if (xw < -d0 + 0.6 || xw > Xfar) continue;          // tô cả vùng sát camera (trước đây bỏ trống thành dải đen)
     const kx = (xw + d0) / f;
-    for (let sx = 0; sx < CW; sx++) {
+    for (let dsx = 0; dsx < DW; dsx++) {
+      const sx = (dsx + 0.5) / K;
       const cl = LY.classify((sx - cx) * kx);
       let c;
       if (cl.kind === "road") {
@@ -465,7 +469,7 @@ export function perspective3DDataURL(d, result, doc = globalThis.document) {
         const t = Math.max(0, Math.min(1, sampleE(xw, W / 2) / Emax));
         c = mix(grass0, grassLit, Math.pow(t, 0.9) * 0.8);
       } else continue;
-      const o = (sy * CW + sx) * 4;
+      const o = (dsy * DW + dsx) * 4;
       px[o] = c[0]; px[o + 1] = c[1]; px[o + 2] = c[2]; px[o + 3] = 255;
     }
   }
@@ -556,7 +560,7 @@ export function perspective3DDataURL(d, result, doc = globalThis.document) {
   const vg = ctx.createRadialGradient(cx, CH * 0.6, CH * 0.35, cx, CH * 0.6, CH * 0.95);
   vg.addColorStop(0, "rgba(0,0,0,0)"); vg.addColorStop(1, "rgba(0,0,0,0.28)");
   ctx.fillStyle = vg; ctx.fillRect(0, 0, CW, CH);
-  return cv.toDataURL("image/png");
+  return cv.toDataURL("image/jpeg", 0.9);                         // ảnh đêm nén JPEG: nét gấp đôi mà file PDF không phình
 }
 
 /** Sơ đồ cần đèn với nhãn (1)-(4) -> dataURL. */
@@ -766,8 +770,8 @@ export function renderRoadPage(doc, { input, result, ph, meta, makeIntensity }) 
   doc.setFontSize(10.5); doc.text("Mô phỏng chiếu sáng ban đêm (phối cảnh 3D)", M, y); y += 3;
   try {
     const p3 = perspective3DDataURL(d, result, globalThis.document);
-    const pw3 = 182, ph3 = pw3 * 440 / 840;
-    doc.addImage(p3, "PNG", M, y, pw3, ph3, undefined, "FAST");
+    const pw3 = 182, ph3 = pw3 * 400 / 840;                       // đúng tỉ lệ ảnh (trước đây kéo giãn dọc 10%)
+    doc.addImage(p3, "JPEG", M, y, pw3, ph3, undefined, "FAST");
     doc.setFontSize(7.4); doc.setTextColor(120, 130, 145);
     const cctTxt = (d.luminaire && d.luminaire.cct) ? d.luminaire.cct + " K" : "4000 K (mặc định, IES không ghi)";
     const capLines = doc.splitTextToSize("Mặt đường tô theo lưới độ rọi E đã tính (Emin " + vn(result.E.min, 1) + " – Emax " + vn(result.E.max, 1) + " lx); màu ánh sáng theo nhiệt độ màu CCT " + cctTxt + ".", 182);

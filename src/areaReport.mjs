@@ -25,14 +25,14 @@ export function areaPlanDataURL(state, result, doc = globalThis.document, W = 14
 }
 
 /** Ảnh phối cảnh 3D (PNG dataURL) cho PDF. */
-export function area3DDataURL(state, result, doc = globalThis.document, W = 1400, H = 760, arch = null) {
+export function area3DDataURL(state, result, doc = globalThis.document, W = 2000, H = 1086, arch = null, MF = 0.8) {
   const cv = doc.createElement("canvas"); cv.width = W; cv.height = H;
-  drawArea3D(cv.getContext("2d"), W, H, { poles: state.poles, areas: state.areas, objects: state.objects || [], arch, result }, { px: 1.6 });
-  return cv.toDataURL("image/png");
+  drawArea3D(cv.getContext("2d"), W, H, { poles: state.poles, areas: state.areas, objects: state.objects || [], arch, result }, { px: 2.2, ss: 2, cam: state.cam || undefined, MF, fieldKey: state.fieldKey || undefined });
+  return cv.toDataURL("image/jpeg", 0.9);
 }
 
 /** Vẽ toàn bộ báo cáo khu vực vào doc (jsPDF, đã nạp font). */
-export function renderAreaPdf(doc, { state, result, arch = null, projectName = "", date = new Date() }) {
+export function renderAreaPdf(doc, { state, result, arch = null, projectName = "", date = new Date(), MF = 0.8 }) {
   const M = 14, title = projectName || "Khu vực";
   let y = 18;
   doc.setFontSize(15); doc.text(fitText(doc, title, 182), M, y); y += 6;
@@ -63,7 +63,7 @@ export function renderAreaPdf(doc, { state, result, arch = null, projectName = "
   doc.setFontSize(11); doc.text("Mặt bằng bố trí và độ rọi ngang [lx]", M, y); y += 2;
   const pw = 182, ph = pw * 900 / 1400;
   const { url, range } = areaPlanDataURL(state, result);
-  doc.addImage(url, "PNG", M, y, pw, ph); y += ph + 2;
+  doc.addImage(url, "PNG", M, y, pw, ph, undefined, "FAST"); y += ph + 2;
   // thang màu
   for (let k = 0; k < 40; k++) { const c = heatColor(k / 39); doc.setFillColor(c[0], c[1], c[2]); doc.rect(M + k * 2, y, 2.05, 3, "F"); }
   doc.setFontSize(7.6); doc.setTextColor(90, 100, 115);
@@ -74,10 +74,10 @@ export function renderAreaPdf(doc, { state, result, arch = null, projectName = "
   // Trang 2: phối cảnh 3D ban đêm (dữ liệu thật) + trụ + bộ đèn
   doc.addPage(); y = header(doc, title);
   doc.setFontSize(11); doc.text("Mô phỏng chiếu sáng ban đêm (phối cảnh 3D)", M, y); y += 2;
-  const p3 = area3DDataURL(state, result, globalThis.document, 1400, 760, arch);
-  doc.addImage(p3, "PNG", M, y, 182, 182 * 760 / 1400); y += 182 * 760 / 1400 + 3;
+  const p3 = area3DDataURL(state, result, globalThis.document, 2000, 1086, arch, MF);
+  doc.addImage(p3, "JPEG", M, y, 182, 182 * 1086 / 2000, undefined, "FAST"); y += 182 * 1086 / 2000 + 3;
   doc.setFontSize(7.6); doc.setTextColor(110, 120, 135);
-  doc.text(fitText(doc, "Mặt vùng" + (arch ? ", mặt đứng tòa nhà, tường, tán cây" : "") + " tô theo độ rọi đã tính (tối → sáng = Emin → Emax); trụ, cần, đèn đúng toạ độ, cao độ và hướng chiếu từng đèn.", 182), M, y); y += 7;
+  doc.text(fitText(doc, "Ảnh dò tia từ kết quả tính: độ sáng theo độ chói L = ρ·E/π (mặt đất ρ 0,2" + (arch ? "; mặt đứng, tán cây theo ρ khai báo" : "") + "), có bóng đổ; trụ, cần, đèn đúng toạ độ, cao độ, hướng chiếu.", 182), M, y); y += 7;
   doc.setTextColor(30, 30, 40);
   doc.setFontSize(11); doc.text("Vị trí trụ và bộ đèn trên từng trụ", M, y); y += 2;
   const prow = [["Trụ", "Đèn", "x (m)", "y (m)", "Cao (m)", "Hướng", "Nghiêng", "Vươn (m)", "Bộ đèn"]];
@@ -127,7 +127,7 @@ export function renderAreaPdf(doc, { state, result, arch = null, projectName = "
       doc.setFontSize(10); doc.text(`Bề mặt trải phẳng — ${o.id} (${TYPE_LABEL[o.type]}) [lx]`, M, y); y += 2;
       const cv = globalThis.document.createElement("canvas"); cv.width = 1400; cv.height = 520;
       drawFacades(cv.getContext("2d"), 1400, 520, arch, { objId: o.id, px: 1.6 });
-      doc.addImage(cv.toDataURL("image/png"), "PNG", M, y, 182, ih); y += ih + 6;
+      doc.addImage(cv.toDataURL("image/png"), "PNG", M, y, 182, ih, undefined, "FAST"); y += ih + 6;
     }
   }
 
