@@ -1,6 +1,15 @@
 // Vẽ mặt bằng chế độ "Khu vực tự do" lên canvas 2D — dùng chung cho màn hình (kéo/chọn trụ) và PDF.
 // Toạ độ thế giới: x phải, y lên. Trả về phép biến đổi để trang web dò điểm bấm (toWorld/toScreen).
 
+import { poleLamps } from "./area.mjs";
+
+/** Điểm đầu mũi tên hướng chiếu của một đèn (m): từ vị trí đèn, dài ∝ H·tan(nghiêng), tối thiểu 3 m. */
+export function lampHandle(p, l) {
+  const a = (l.aim || 0) * Math.PI / 180, arm = l.arm || 0, H = l.H ?? p.H;
+  const reach = Math.max(3, Math.min(40, H * Math.tan(Math.min(75, l.tilt || 0) * Math.PI / 180)));
+  return [p.x + (arm + reach) * Math.cos(a), p.y + (arm + reach) * Math.sin(a)];
+}
+
 const STOPS = [[0, [34, 58, 140]], [0.28, [30, 150, 190]], [0.52, [90, 190, 90]], [0.76, [245, 200, 60]], [1, [230, 90, 50]]];
 export function heatColor(t) {
   t = Math.max(0, Math.min(1, t));
@@ -73,15 +82,21 @@ export function drawAreaPlan(ctx, Wpx, Hpx, { poles, areas, result = null }, opt
       ctx.fillStyle = "#1c2430"; ctx.fillText(label, sx + 8 * k, sy + 17 * k);
     }
   });
-  // trụ + hướng chiếu (đoạn dài ∝ H·tan(nghiêng), tối thiểu 3 m)
+  // trụ + hướng chiếu từng đèn (đoạn dài ∝ H·tan(nghiêng), tối thiểu 3 m); đèn chọn tô đậm
   for (const p of poles) {
-    const sel = p.id === opts.sel, a = (p.aim || 0) * Math.PI / 180;
-    const reach = Math.max(3, Math.min(40, p.H * Math.tan(Math.min(75, p.tilt || 0) * Math.PI / 180)));
-    const [px, py] = S(p.x, p.y), [ax, ay] = S(p.x + reach * Math.cos(a), p.y + reach * Math.sin(a));
-    ctx.strokeStyle = sel ? C.sel : (result ? "#ffffff" : C.fg); ctx.lineWidth = 1.8 * k; ctx.setLineDash([5 * k, 4 * k]);
-    ctx.beginPath(); ctx.moveTo(px, py); ctx.lineTo(ax, ay); ctx.stroke(); ctx.setLineDash([]);
-    ctx.fillStyle = ctx.strokeStyle; ctx.beginPath(); ctx.arc(ax, ay, 3 * k, 0, 2 * Math.PI); ctx.fill();
-    ctx.fillStyle = sel ? C.sel : (p.ies ? C.pole : "#c0392b"); ctx.strokeStyle = "#ffffff"; ctx.lineWidth = 2 * k;
+    const sel = p.id === opts.sel, L = poleLamps(p);
+    const [px, py] = S(p.x, p.y);
+    L.forEach((l, i) => {
+      const [ax, ay] = S(...lampHandle(p, l));
+      const hot = sel && opts.selLamp === i;
+      ctx.strokeStyle = !l.ies ? "#c0392b" : sel ? (hot ? "#c2410c" : C.sel) : (result ? "#ffffff" : C.fg);
+      ctx.lineWidth = (hot ? 2.8 : 1.8) * k; ctx.setLineDash([5 * k, 4 * k]);
+      ctx.beginPath(); ctx.moveTo(px, py); ctx.lineTo(ax, ay); ctx.stroke(); ctx.setLineDash([]);
+      ctx.fillStyle = ctx.strokeStyle; ctx.beginPath(); ctx.arc(ax, ay, (hot ? 4.5 : 3) * k, 0, 2 * Math.PI); ctx.fill();
+      if (sel && L.length > 1) { ctx.font = `bold ${10 * k}px sans-serif`; ctx.textAlign = "center"; ctx.fillText(String(i + 1), ax, ay - 7 * k); }
+    });
+    const missing = !L.length || L.some((l) => !l.ies);
+    ctx.fillStyle = sel ? C.sel : (missing ? "#c0392b" : C.pole); ctx.strokeStyle = "#ffffff"; ctx.lineWidth = 2 * k;
     ctx.beginPath(); ctx.arc(px, py, (sel ? 8 : 6.5) * k, 0, 2 * Math.PI); ctx.fill(); ctx.stroke();
     ctx.fillStyle = C.fg; ctx.font = `bold ${11.5 * k}px sans-serif`; ctx.textAlign = "center";
     ctx.fillText(p.id, px, py - 11 * k);

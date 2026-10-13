@@ -15,18 +15,38 @@ export const AREA_COLS = {
   x0: "x0 (m)", y0: "y0 (m)", L: "Dài theo x (m)", W: "Rộng theo y (m)", poly: "Đa giác (x y; x y; …)",
   step: "Bước lưới (m)", mf: "MF",
 };
+// Sheet "DEN TREN TRU": mỗi dòng một bộ đèn trên trụ (trụ quảng trường nhiều đèn, mỗi đèn hướng/nghiêng/IES riêng).
+export const LAMP_COLS = { pole: "Trụ", k: "Đèn số", aim: "Hướng chiếu (độ)", tilt: "Góc nghiêng (độ)", arm: "Vươn (m)", H: "Cao độ (m)", ies: "Bộ đèn (IES)" };
+export const LAMP_HEAD = ["pole", "k", "aim", "tilt", "arm", "H", "ies"].map((k) => LAMP_COLS[k]);
 export const POLE_HEAD = ["id", "x", "y", "H", "aim", "tilt", "n", "ies"].map((k) => AREA_COLS[k]);
 export const AREA_HEAD = ["area", "req", "reqEav", "reqUo", "x0", "y0", "L", "W", "poly", "step", "mf"].map((k) => AREA_COLS[k]);
 
 const num = (v) => { if (v == null || v === "") return null; const n = parseFloat(String(v).replace(",", ".")); return Number.isFinite(n) ? n : null; };
 const norm = (s) => String(s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toUpperCase().replace(/\.IES$/, "").replace(/_IESNA2002$/, "").replace(/[^A-Z0-9]/g, "");
 
-/** Một trụ → các bộ đèn cho engine: C0 của IES = hướng chiếu, nghiêng về phía C0. */
-export function poleToLums(p) {
+/**
+ * Danh sách đèn của trụ: p.lamps nếu khai riêng từng đèn; nếu không (file cũ) = N đèn giống nhau theo hướng/nghiêng/IES của trụ.
+ * Mỗi đèn: {aim, tilt, arm (vươn, m), H (cao độ riêng hoặc null = theo trụ), ies, iesWant}.
+ */
+export function poleLamps(p) {
+  if (Array.isArray(p.lamps)) return p.lamps;
   const n = Math.max(1, Math.round(p.n || 1));
-  const l = { x: p.x, y: p.y, H: p.H, tilt: p.tilt || 0, rot: (p.aim || 0) - 90, c0dir: 1 };
-  return Array.from({ length: n }, () => l);
+  return Array.from({ length: n }, () => ({ aim: p.aim || 0, tilt: p.tilt || 0, arm: 0, H: null, ies: p.ies || null, iesWant: p.iesWant || "" }));
 }
+
+/** Một đèn → bộ đèn cho engine: đặt lệch tâm trụ một đoạn = vươn theo hướng chiếu; C0 của IES = hướng chiếu. */
+export function lampToLum(p, l) {
+  const a = (l.aim || 0) * Math.PI / 180, arm = l.arm || 0;
+  return { x: p.x + arm * Math.cos(a), y: p.y + arm * Math.sin(a), H: l.H ?? p.H, tilt: l.tilt || 0, rot: (l.aim || 0) - 90, c0dir: 1 };
+}
+export const poleToLums = (p) => poleLamps(p).map((l) => lampToLum(p, l));
+
+/** Chia đều các đèn quanh 360°, bắt đầu từ góc `start`; giữ nguyên các thông số khác. */
+export function spreadLamps(lamps, start = 0) {
+  const n = lamps.length || 1;
+  return lamps.map((l, i) => ({ ...l, aim: Math.round(((start + 360 * i / n) % 360) * 10) / 10 }));
+}
+const lampPower = (l) => (l.ies && l.ies.ph ? l.ies.ph.inputWatts || l.ies.power || 0 : 0);
 
 function inPoly(x, y, poly) {
   let inside = false;
@@ -67,14 +87,19 @@ export function areaGrid(a) {
  * areas: [{name, x0,y0,L,W | poly, step, req:{Eav,Uo}, MF}]. MF mặc định = opts.MF (0,8).
  */
 export function calcArea({ poles, areas }, { MF: MF0 = 0.8 } = {}) {
-  const live = poles.filter((p) => p.ies && p.ies.ph);
   const groups = new Map();                                    // gom theo bộ đèn để dựng I(C,γ) một lần
-  for (const p of live) {
-    const k = p.ies.name;
-    if (!groups.has(k)) groups.set(k, { I: makeIntensity(p.ies.ph), lums: [] });
-    groups.get(k).lums.push(...poleToLums(p));
+  let power = 0, nLamps = 0, nPoles = 0;
+  for (const p of poles) {
+    let live = 0;
+    for (const l of poleLamps(p)) {
+      if (!l.ies || !l.ies.ph) continue;                         // đèn thiếu IES: không tính
+      const k = l.ies.name;
+      if (!groups.has(k)) groups.set(k, { I: makeIntensity(l.ies.ph), lums: [] });
+      groups.get(k).lums.push(lampToLum(p, l));
+      power += lampPower(l); nLamps++; live++;
+    }
+    if (live) nPoles++;
   }
-  const power = live.reduce((s, p) => s + Math.max(1, Math.round(p.n || 1)) * (p.ies.ph.inputWatts || p.ies.power || 0), 0);
   const out = areas.map((a) => {
     const MF = a.MF ?? MF0;
     const grid = areaGrid(a);
@@ -92,7 +117,7 @@ export function calcArea({ poles, areas }, { MF: MF0 = 0.8 } = {}) {
     return { name: a.name, grid, E, Eav, Emin, Emax, Uo, Ud, MF, req, okE, okU, pass: okE && okU,
       power, lpd: grid.area > 0 ? power / grid.area : null };
   });
-  return { areas: out, power, nPoles: live.length };
+  return { areas: out, power, nPoles, nLamps };
 }
 
 function parsePoly(s) {
@@ -111,7 +136,18 @@ export function matchAreaIes(name, iesIndex) {
 }
 
 /** Đọc 2 sheet VI TRI TRU + VUNG TINH (mảng object theo tiêu đề dòng 1). */
-export function parseAreaRows({ poleRows = [], areaRows = [] }, iesIndex = []) {
+function resolveIes(want, iesIndex, who, warnings) {
+  if (!want) return null;
+  let ies = matchAreaIes(want, iesIndex);
+  if (!ies) { warnings.push(`${who}: không tìm thấy file IES "${want}" trong thư mục`); return null; }
+  if (ies.ph && ies.ph.photometricType !== 1) {
+    warnings.push(`${who}: file IES ${ies.name} là trắc quang loại ${ies.ph.photometricType === 2 ? "B" : "A"} — chưa hỗ trợ (chỉ loại C)`);
+    return null;
+  }
+  return ies;
+}
+
+export function parseAreaRows({ poleRows = [], areaRows = [], lampRows = [] }, iesIndex = []) {
   const warnings = [], poles = [], areas = [];
   poleRows.forEach((row, i) => {
     const id = String(row[AREA_COLS.id] ?? `T${i + 1}`).trim() || `T${i + 1}`;
@@ -119,15 +155,34 @@ export function parseAreaRows({ poleRows = [], areaRows = [] }, iesIndex = []) {
     if (x == null && y == null && H == null && !row[AREA_COLS.ies]) return;    // dòng trống
     if (x == null || y == null || H == null) { warnings.push(`Trụ ${id}: thiếu x, y hoặc cao H — bỏ qua`); return; }
     const want = row[AREA_COLS.ies];
-    let ies = matchAreaIes(want, iesIndex);
-    if (want && !ies) warnings.push(`Trụ ${id}: không tìm thấy file IES "${want}" trong thư mục`);
-    if (ies && ies.ph && ies.ph.photometricType !== 1) {
-      warnings.push(`Trụ ${id}: file IES ${ies.name} là trắc quang loại ${ies.ph.photometricType === 2 ? "B" : "A"} — chưa hỗ trợ (chỉ loại C)`);
-      ies = null;
-    }
+    const ies = resolveIes(want, iesIndex, `Trụ ${id}`, warnings);
     poles.push({ id, x, y, H, aim: num(row[AREA_COLS.aim]) ?? 0, tilt: num(row[AREA_COLS.tilt]) ?? 0,
       n: Math.max(1, Math.round(num(row[AREA_COLS.n]) ?? 1)), ies: ies || null, iesWant: want ? String(want) : "" });
   });
+  // Đèn khai riêng (sheet DEN TREN TRU): gom theo mã trụ, sắp theo "Đèn số"
+  const byPole = new Map();
+  lampRows.forEach((row, i) => {
+    const pid = String(row[LAMP_COLS.pole] ?? "").trim();
+    if (!pid && row[LAMP_COLS.aim] == null && row[LAMP_COLS.ies] == null) return;              // dòng trống
+    const p = poles.find((q) => q.id === pid);
+    if (!p) { warnings.push(`Đèn dòng ${i + 2} (sheet DEN TREN TRU): không có trụ "${pid}" trong sheet VI TRI TRU — bỏ qua`); return; }
+    const k = num(row[LAMP_COLS.k]) ?? (byPole.get(pid)?.length || 0) + 1;
+    let tilt = num(row[LAMP_COLS.tilt]) ?? 0;
+    if (!(tilt >= 0 && tilt <= 90)) { warnings.push(`Trụ ${pid} đèn ${k}: góc nghiêng ${tilt}° ngoài 0–90° — dùng 0°`); tilt = 0; }
+    const want = row[LAMP_COLS.ies];
+    const ies = want ? resolveIes(want, iesIndex, `Trụ ${pid} đèn ${k}`, warnings) : p.ies;
+    const H = num(row[LAMP_COLS.H]);
+    const l = { k, aim: num(row[LAMP_COLS.aim]) ?? 0, tilt, arm: Math.max(0, num(row[LAMP_COLS.arm]) ?? 0), H: H > 0 ? H : null,
+      ies: ies || null, iesWant: want ? String(want) : (p.iesWant || "") };
+    if (!byPole.has(pid)) byPole.set(pid, []);
+    byPole.get(pid).push(l);
+  });
+  for (const [pid, ls] of byPole) {
+    const p = poles.find((q) => q.id === pid);
+    p.lamps = ls.sort((a, b) => a.k - b.k).map(({ k, ...l }) => l);
+    p.n = p.lamps.length;
+  }
+
   areaRows.forEach((row, i) => {
     const name = String(row[AREA_COLS.area] ?? `Vùng ${i + 1}`).trim() || `Vùng ${i + 1}`;
     const poly = parsePoly(row[AREA_COLS.poly]);
@@ -166,7 +221,20 @@ const ies0 = (p) => (p.ies ? p.ies.name.replace(/\.ies$/i, "") : p.iesWant || nu
 function polesSheet(wb, poles) {
   const ws = wb.addWorksheet("VI TRI TRU");
   headRow(ws, POLE_HEAD, "FF1F4E79", [8, 10, 10, 10, 12, 12, 8, 34]);
-  for (const p of poles) bodyRow(ws, [p.id, p.x, p.y, p.H, p.aim, p.tilt, p.n, ies0(p)]);
+  for (const p of poles) {
+    const L = poleLamps(p), l0 = L[0] || {};
+    bodyRow(ws, [p.id, p.x, p.y, p.H, l0.aim ?? p.aim, l0.tilt ?? p.tilt, L.length, ies0(Array.isArray(p.lamps) ? { ies: l0.ies || null, iesWant: l0.iesWant || "" } : p)]);
+  }
+  return ws;
+}
+function lampsSheet(wb, poles, all = true) {
+  const ws = wb.addWorksheet("DEN TREN TRU");
+  headRow(ws, LAMP_HEAD, "FF7A3E9D", [8, 8, 12, 12, 9, 10, 34]);
+  for (const p of poles) {
+    if (!all && !Array.isArray(p.lamps)) continue;
+    poleLamps(p).forEach((l, i) => bodyRow(ws, [p.id, i + 1, l.aim, l.tilt, l.arm ?? 0, l.H ?? null,
+      l.ies ? l.ies.name.replace(/\.ies$/i, "") : (l.iesWant || null)]));
+  }
   return ws;
 }
 function areasSheet(wb, areas) {
@@ -187,11 +255,11 @@ function reqSheet(wb) {
 /** Workbook kết quả: trụ (sau khi sửa trên app), vùng, kết quả, lưới E từng vùng. */
 export async function buildAreaWorkbook(ExcelJS, { poles, areas, result, projectName = "", version = VERSION, date = new Date() }) {
   const wb = new ExcelJS.Workbook(); wb.creator = `WebDialux-CS ${version}`; wb.created = date;
-  polesSheet(wb, poles); areasSheet(wb, areas);
+  polesSheet(wb, poles); lampsSheet(wb, poles); areasSheet(wb, areas);
   const ws = wb.addWorksheet("KET QUA");
   ws.mergeCells("A1:J1"); ws.getCell("A1").value = "KẾT QUẢ TÍNH CHIẾU SÁNG KHU VỰC" + (projectName ? " — " + projectName : "");
   ws.getCell("A1").font = { bold: true, size: 14, color: { argb: "FF1F4E79" } };
-  ws.mergeCells("A2:J2"); ws.getCell("A2").value = `Ngày tính ${date.toLocaleDateString("vi-VN")} · WebDialux-CS ${version} · ${result.nPoles} trụ · công suất ${(result.power / 1000).toFixed(2).replace(".", ",")} kW · độ rọi ngang duy trì`;
+  ws.mergeCells("A2:J2"); ws.getCell("A2").value = `Ngày tính ${date.toLocaleDateString("vi-VN")} · WebDialux-CS ${version} · ${result.nPoles} trụ · ${result.nLamps ?? ""} bộ đèn · công suất ${(result.power / 1000).toFixed(2).replace(".", ",")} kW · độ rọi ngang duy trì`;
   ws.getCell("A2").font = { italic: true, size: 10, color: { argb: "FF5B6676" } };
   const H = ["Vùng", "Diện tích (m²)", "Số điểm", "MF", "Eav (lx)", "Emin (lx)", "Emax (lx)", "Uo = Emin/Eav", "Ud = Emin/Emax", "W/m² (tổng đèn / diện tích vùng)", "Yêu cầu", "Eav YC", "Uo YC", "Kết quả"];
   const hr = ws.getRow(4);
@@ -229,6 +297,11 @@ export async function buildAreaTemplate(ExcelJS, { version = VERSION } = {}) {
   ].map(([id, x, y, H, aim]) => ({ id, x, y, H, aim, tilt: 35, n: 2, ies: null, iesWant: "(tên file IES)" }));
   const ws = polesSheet(wb, poles);
   ws.getColumn(8).eachCell((c, r) => { if (r > 1) c.value = null; });
+  // Ví dụ trụ nhiều đèn: T2 và T5 (giữa sân) mỗi trụ 2 đèn — một đèn chiếu gần (nghiêng 30°), một chiếu xa (nghiêng 50°)
+  const ex = [["T2", 1, 70, 30], ["T2", 2, 110, 50], ["T5", 1, -70, 30], ["T5", 2, -110, 50]];
+  const wl = wb.addWorksheet("DEN TREN TRU");
+  headRow(wl, LAMP_HEAD, "FF7A3E9D", [8, 8, 12, 12, 9, 10, 34]);
+  for (const [pid, k, aim, tilt] of ex) bodyRow(wl, [pid, k, aim, tilt, 0.5, null, null]);
   const areas = [{ name: "Sân bóng đá mini", x0: 0, y0: 0, L: 40, W: 20, step: 1, req: { id: "TCVN13608-B12-luyentap" }, MF: null }];
   areasSheet(wb, areas);
   reqSheet(wb);
@@ -240,7 +313,8 @@ export async function buildAreaTemplate(ExcelJS, { version = VERSION } = {}) {
     "Toạ độ mặt bằng tính bằng mét: x sang phải, y lên trên (như bản vẽ CAD). Gốc toạ độ tuỳ chọn, nên đặt tại một góc vùng tính.",
     "Sheet VI TRI TRU: mỗi dòng một trụ. Hướng chiếu đo từ trục +x, ngược chiều kim đồng hồ (0° = +x, 90° = +y, 180° = −x, −90° = −y).",
     "Góc nghiêng: 0° = đèn chiếu thẳng xuống; tăng góc để hắt chùm sáng ra xa theo hướng chiếu (đèn pha sân thể thao thường 30°–60°).",
-    "Số đèn: số bộ đèn giống nhau trên cùng trụ, cùng hướng. Trụ có đèn khác loại/khác hướng: ghi thành nhiều dòng cùng toạ độ.",
+    "Số đèn: số bộ đèn giống nhau trên cùng trụ, cùng hướng (cách khai nhanh).",
+    "Trụ nhiều đèn khác hướng/khác loại (trụ quảng trường, cột pha): khai từng đèn ở sheet DEN TREN TRU — Trụ, Đèn số, Hướng, Nghiêng, Vươn (đèn lệch khỏi tâm trụ theo hướng chiếu), Cao độ (trống = theo trụ), Bộ đèn IES (trống = theo trụ). Trụ có dòng ở sheet này thì bỏ qua Hướng/Nghiêng/Số đèn ở VI TRI TRU.",
     "Bộ đèn (IES): tên file IES trong thư mục đã chọn (không cần đuôi .ies). App chỉ hỗ trợ file trắc quang loại C (đèn đường, đa số đèn pha LED).",
     "Sheet VUNG TINH: mỗi dòng một vùng. Hình chữ nhật: x0, y0, Dài theo x, Rộng theo y. Hoặc đa giác: \"x y; x y; x y\" (dấu chấm thập phân, dấu ; giữa các đỉnh).",
     "Mã yêu cầu: chọn trong sheet YEU CAU (TCVN 13608:2023, EN 12193). Ghi Eav/Uo yêu cầu để sửa ngưỡng hoặc tự đặt ngưỡng khi không dùng mã.",

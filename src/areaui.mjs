@@ -1,8 +1,8 @@
 // Giao diện chế độ "Khu vực tự do" (phương án B: bảng trụ bên trái, KPI + mặt bằng bên phải).
 // Tự dựng DOM trong #areaView; trang chính chỉ cần gọi initAreaUI(...) và chuyển chế độ.
-import { calcArea, parseAreaRows, buildAreaWorkbook, buildAreaTemplate, matchAreaIes, AREA_COLS } from "./area.mjs";
+import { calcArea, parseAreaRows, buildAreaWorkbook, buildAreaTemplate, matchAreaIes, poleLamps, spreadLamps } from "./area.mjs";
 import { AREA_REQS, findReq } from "./areaReq.mjs";
-import { drawAreaPlan, heatColor } from "./areaDraw.mjs";
+import { drawAreaPlan, heatColor, lampHandle } from "./areaDraw.mjs";
 
 const CSS = `
 #areaView{padding:12px 0}
@@ -40,6 +40,22 @@ body.area .wrap{max-width:min(1680px,100%)}
 #areaView .hint{font-size:12px;color:var(--muted);margin:8px 0 0}
 #areaView .empty{padding:28px;text-align:center;color:var(--muted)}
 #areaView .del{border:none;background:none;color:var(--muted);cursor:pointer;font-size:14px;padding:4px 6px}
+#areaView .detail{margin-top:12px}
+#areaView .detail .top{display:flex;gap:12px;align-items:center;justify-content:space-between}
+#areaView .detail .acts{display:flex;gap:6px;flex-wrap:wrap;margin:8px 0 10px}
+#areaView .lamps{display:grid;gap:8px;max-height:44vh;overflow:auto;padding-right:2px}
+#areaView .lamp{display:grid;grid-template-columns:28px 1fr 26px;gap:8px;align-items:start;border:1px solid var(--line);border-radius:10px;padding:8px;transition:border-color .15s,background .15s}
+#areaView .lamp.on{border-color:var(--accent);background:color-mix(in srgb,var(--accent) 6%,transparent)}
+#areaView .lamp.miss{border-color:color-mix(in srgb,var(--fail) 55%,var(--line))}
+#areaView .lamp .no{width:26px;height:26px;border-radius:50%;background:var(--accent);color:var(--accent-ink);display:grid;place-items:center;font:600 12px var(--sans)}
+#areaView .lamp .g4{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px}
+#areaView .lamp label{display:block;font-size:11px;color:var(--muted);margin-bottom:2px}
+#areaView .lamp input,#areaView .lamp select{width:100%;min-width:0;border:1px solid var(--line);background:var(--surface);color:var(--fg);font:12.5px var(--mono);padding:5px 6px;border-radius:6px}
+#areaView .lamp select,#areaView .lamp .iesw{margin-top:6px;font-family:var(--sans)}
+#areaView .lamp input:focus,#areaView .lamp select:focus{border-color:var(--accent);outline:none}
+#areaView .compass{flex:none}
+#areaView .sumies{font-size:11.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:220px}
+@media (max-width:620px){#areaView .lamp .g4{grid-template-columns:repeat(2,minmax(0,1fr))}}
 `;
 
 const N = (v) => { if (v === "" || v == null) return null; const n = parseFloat(String(v).replace(",", ".")); return Number.isFinite(n) ? n : null; };
@@ -48,7 +64,12 @@ const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<
 
 export function initAreaUI({ root, setStatus, getIes: getIesAll, getMF, saveXlsxBuffer, outName, getPdfTools }) {
   const getIes = () => getIesAll().filter((e) => !e.ph || e.ph.photometricType === 1);   // chỉ trắc quang loại C
-  const st = { poles: [], areas: [], result: null, sel: null, areaIx: 0, warnings: [], name: "" };
+  const st = { poles: [], areas: [], result: null, sel: null, selLamp: null, areaIx: 0, warnings: [], name: "" };
+  const shortIes = (l) => l.ies ? l.ies.name.replace(/\.ies$/i, "").replace(/_IESNA2002$/i, "") : (l.iesWant ? l.iesWant + " (thiếu)" : "thiếu IES");
+  const iesSummary = (p) => { const m = new Map(); for (const l of poleLamps(p)) { const k = shortIes(l); m.set(k, (m.get(k) || 0) + 1); } return [...m].map(([k, n]) => n > 1 ? `${k} ×${n}` : k).join(", "); };
+  const newLamp = (o = {}) => ({ aim: 90, tilt: 30, arm: 0, H: null, ies: getIes()[0] || null, iesWant: (getIes()[0] || {}).name || "", ...o });
+  const copyLamps = (L) => L.map((l) => ({ ...l }));
+  const selPole = () => st.poles.find((p) => p.id === st.sel) || null;
   const style = document.createElement("style"); style.textContent = CSS; document.head.appendChild(style);
   let view = null, timer = null, dragBounds = null;
   const nextId = () => { const used = new Set(st.poles.map((p) => p.id)); let n = st.poles.length + 1; while (used.has("T" + n)) n++; return "T" + n; };
@@ -65,13 +86,45 @@ export function initAreaUI({ root, setStatus, getIes: getIesAll, getMF, saveXlsx
     if (now) run(); else timer = setTimeout(run, 140);
   }
 
+  // ---------- ngăn "Chi tiết trụ": sơ đồ hướng + thẻ từng đèn ----------
+  function compass(L) {
+    const r = 34, lines = L.map((l, i) => { const a = (l.aim || 0) * Math.PI / 180, x = Math.cos(a) * r, y = -Math.sin(a) * r;
+      const on = st.selLamp === i, col = !l.ies ? "var(--fail)" : on ? "#c2410c" : "var(--accent)";
+      return `<line x2="${x.toFixed(1)}" y2="${y.toFixed(1)}" stroke="${col}" stroke-width="${on ? 3.4 : 2.6}" stroke-linecap="round"/><text x="${(x * 1.22).toFixed(1)}" y="${(y * 1.22 + 3).toFixed(1)}" text-anchor="middle" font-size="9" font-weight="700" fill="var(--muted)">${i + 1}</text>`; }).join("");
+    return `<svg class="compass" width="96" height="96" viewBox="-48 -48 96 96" role="img" aria-label="Sơ đồ hướng chiếu các đèn (vạch phải = +x, vạch trên = +y)"><circle r="40" fill="none" stroke="var(--line)"/><path d="M40 0h5M0 -40v-5" stroke="var(--muted)"/>${lines}<circle r="4.5" fill="#f59e0b"/></svg>`;
+  }
+  function iesOptions(cur) {
+    return `<option value="">— chọn IES —</option>` + getIes().map((e) => `<option value="${esc(e.name)}"${cur === e.name ? " selected" : ""}>${esc(e.name.replace(/\.ies$/i, ""))}</option>`).join("");
+  }
+  function detailHtml() {
+    const ies = getIes(), iesOpts = iesOptions;
+    const p = selPole();
+    if (!p) return `<div class="card pad detail" style="color:var(--muted);font-size:12.5px;text-align:center">Chọn một trụ để khai báo từng đèn (hướng, nghiêng, vươn, cao độ, bộ đèn IES).</div>`;
+    const L = poleLamps(p), others = st.poles.filter((q) => q !== p);
+    return `<div class="card pad detail" id="avDetail">
+      <div class="top"><div><h3>Chi tiết trụ ${esc(p.id)} — ${L.length} đèn</h3><div style="font-size:12px;color:var(--muted);margin-top:3px">Cao trụ ${f1(p.H)} m · toạ độ (${f1(p.x)}; ${f1(p.y)})</div></div>${compass(L)}</div>
+      <div class="acts"><button id="avLAdd" class="primary">＋ Thêm đèn</button><button id="avLSpread" ${L.length > 1 ? "" : "disabled"} title="Giữ hướng đèn 1, các đèn còn lại cách đều">Chia đều 360°</button>
+        ${others.length ? `<select id="avLCopy" style="max-width:200px"><option value="">Sao chép bộ đèn sang…</option><option value="*">Tất cả trụ khác</option>${others.map((q) => `<option value="${esc(q.id)}">Trụ ${esc(q.id)}</option>`).join("")}</select>` : ""}</div>
+      <div class="lamps">${L.map((l, i) => `<div class="lamp${st.selLamp === i ? " on" : ""}${l.ies ? "" : " miss"}" data-l="${i}">
+        <div class="no">${i + 1}</div>
+        <div><div class="g4">
+          <div><label>Hướng °</label><input data-lk="aim" type="number" step="5" value="${l.aim}"></div>
+          <div><label>Nghiêng °</label><input data-lk="tilt" type="number" step="5" min="0" max="90" value="${l.tilt}"></div>
+          <div><label>Vươn m</label><input data-lk="arm" type="number" step="0.1" min="0" value="${l.arm ?? 0}"></div>
+          <div><label>Cao độ m</label><input data-lk="H" type="number" step="0.5" min="0" value="${l.H ?? ""}" placeholder="${f1(p.H)}"></div></div>
+          ${ies.length ? `<select data-lk="ies" aria-label="Bộ đèn IES">${iesOpts(l.ies && l.ies.name)}</select>` : `<input class="iesw" data-lk="iesWant" value="${esc(l.iesWant || "")}" placeholder="tên file IES — chọn thư mục IES để tính">`}
+        </div>
+        <button class="del" data-ldel="${i}" title="Xoá đèn ${i + 1}" ${L.length > 1 ? "" : "disabled"}>✕</button></div>`).join("")}</div></div>`;
+  }
+
   // ---------- dựng giao diện ----------
   function render() {
     if (!st.poles.length && !st.areas.length) {
       root.innerHTML = `<div class="card empty"><h3 style="margin-bottom:8px">Chế độ khu vực tự do — sân thể thao, công viên, quảng trường, bãi đỗ xe</h3>
         <p>Chọn file Excel có sheet <b>VI TRI TRU</b> và <b>VUNG TINH</b> (☰ Menu → <i>Tải Excel mẫu khu vực</i>), hoặc bắt đầu từ sân mẫu rồi sửa trực tiếp.</p>
-        <button id="avSample" class="primary">Bắt đầu với sân bóng mẫu 40 × 20 m</button></div>`;
+        <div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap"><button id="avSample" class="primary">Sân bóng mẫu 40 × 20 m</button><button id="avSample2">Quảng trường mẫu (trụ 4 đèn)</button></div></div>`;
       root.querySelector("#avSample").onclick = () => loadSample();
+      root.querySelector("#avSample2").onclick = () => loadSample("plaza");
       return;
     }
     const ies = getIes();
@@ -81,21 +134,22 @@ export function initAreaUI({ root, setStatus, getIes: getIesAll, getMF, saveXlsx
       return `<option value=""${!cur ? " selected" : ""}>Tự nhập ngưỡng</option>` + groups.map((g) => `<optgroup label="${esc(g)}">` +
         AREA_REQS.filter((r) => r.group === g).map((r) => `<option value="${r.id}"${cur === r.id ? " selected" : ""}>${esc(r.label)} — ${r.Eav} lx${r.Uo != null ? ", Uo " + r.Uo : ""}</option>`).join("") + "</optgroup>").join("");
     };
-    const nLum = st.poles.reduce((s, p) => s + p.n, 0);
+    const nLum = st.poles.reduce((s, p) => s + poleLamps(p).length, 0);
     root.innerHTML = `<div class="av">
       <div class="card pad">
         <div class="hd"><h3>Vị trí trụ đèn</h3><span class="chip">${st.poles.length} trụ · ${nLum} đèn</span><span class="sp"></span>
           <button id="avAdd">＋ Thêm trụ</button><button id="avDup" ${st.sel ? "" : "disabled"}>⧉ Nhân bản</button></div>
-        <div class="tw"><table><thead><tr><th>Trụ</th><th>x (m)</th><th>y (m)</th><th>H (m)</th><th>Hướng°</th><th>Nghiêng°</th><th>Số đèn</th><th>Bộ đèn (IES)</th><th></th></tr></thead><tbody>
-        ${st.poles.map((p, i) => `<tr data-i="${i}" class="${p.id === st.sel ? "sel" : ""}">
+        <div class="tw" style="max-height:30vh"><table><thead><tr><th>Trụ</th><th>x (m)</th><th>y (m)</th><th>H (m)</th><th>Số đèn</th><th>Bộ đèn</th><th></th></tr></thead><tbody>
+        ${st.poles.map((p, i) => { const L = poleLamps(p), miss = !L.length || L.some((l) => !l.ies); return `<tr data-i="${i}" class="${p.id === st.sel ? "sel" : ""}">
           <td><input data-k="id" value="${esc(p.id)}" style="width:52px;font-family:var(--sans);font-weight:600"></td>
           <td><input data-k="x" type="number" step="0.1" value="${p.x}"></td><td><input data-k="y" type="number" step="0.1" value="${p.y}"></td>
-          <td><input data-k="H" type="number" step="0.5" min="0" value="${p.H}"></td><td><input data-k="aim" type="number" step="5" value="${p.aim}"></td>
-          <td><input data-k="tilt" type="number" step="5" min="0" max="85" value="${p.tilt}"></td><td><input data-k="n" type="number" step="1" min="1" value="${p.n}" style="width:46px"></td>
-          <td>${ies.length ? `<select data-k="ies">${iesOpts(p.ies && p.ies.name)}</select>` : `<input data-k="iesWant" value="${esc(p.iesWant || "")}" placeholder="chọn thư mục IES">`}</td>
-          <td><button class="del" data-del="${i}" title="Xoá trụ">✕</button></td></tr>`).join("")}
+          <td><input data-k="H" type="number" step="0.5" min="0" value="${p.H}"></td>
+          <td style="text-align:center;font:600 12.5px var(--mono);cursor:pointer" data-pick="${i}">${L.length}</td>
+          <td class="sumies${miss ? " bad" : ""}" data-pick="${i}" style="cursor:pointer" title="${esc(iesSummary(p))}">${esc(iesSummary(p) || "—")}</td>
+          <td><button class="del" data-del="${i}" title="Xoá trụ">✕</button></td></tr>`; }).join("")}
         </tbody></table></div>
-        <p class="hint">Sửa trực tiếp trong bảng hoặc <b>kéo trụ</b> trên mặt bằng; kéo <b>đầu mũi tên</b> để đổi hướng chiếu. Hướng: 0° = trục +x, 90° = +y. Nghiêng: 0° = chiếu thẳng xuống.</p>
+        <div id="avDetailWrap">${detailHtml()}</div>
+        <p class="hint">Chọn trụ (bấm dòng hoặc bấm trên mặt bằng) để sửa <b>từng đèn</b>. Kéo trụ để dời; kéo <b>đầu mũi tên</b> của một đèn để đổi hướng đèn đó. Hướng: 0° = trục +x, 90° = +y. Nghiêng: 0° = chiếu thẳng xuống. Vươn: đèn lệch khỏi tâm trụ theo hướng chiếu.</p>
         <div class="hd" style="margin-top:14px"><h3>Vùng tính &amp; yêu cầu</h3><span class="sp"></span><button id="avAddA">＋ Thêm vùng</button></div>
         <div class="tw"><table><thead><tr><th>Vùng</th><th>Yêu cầu</th><th>Eav≥</th><th>Uo≥</th><th>x0</th><th>y0</th><th>Dài x</th><th>Rộng y</th><th>Lưới</th><th>MF</th><th></th></tr></thead><tbody>
         ${st.areas.map((a, i) => `<tr data-a="${i}">
@@ -129,15 +183,17 @@ export function initAreaUI({ root, setStatus, getIes: getIesAll, getMF, saveXlsx
         if (k === "id") {
           if (e && e.type === "input") return;                       // đổi mã khi rời ô, tránh trùng
           let v = el.value.trim() || p.id; if (st.poles.some((q) => q !== p && q.id === v)) { v = nextId(); el.value = v; }
-          if (st.sel === p.id) st.sel = v; p.id = v; drawPlan(); return;
+          const wasSel = st.sel === p.id; if (wasSel) st.sel = v; p.id = v; renderDetail(); drawPlan(); return;
         }
         else if (k === "ies") { p.ies = getIes().find((e) => e.name === el.value) || null; p.iesWant = el.value; }
         else if (k === "iesWant") p.iesWant = el.value;
         else { const v = N(el.value); if (v == null) return; p[k] = k === "n" ? Math.max(1, Math.round(v)) : v; }
         recalc();
       };
-      el.onfocus = () => { const p = st.poles[+el.closest("tr").dataset.i]; if (st.sel !== p.id) { st.sel = p.id; markSel(); drawPlan(); } };
+      el.onfocus = () => { const p = st.poles[+el.closest("tr").dataset.i]; if (st.sel !== p.id) select(p.id); };
     });
+    root.querySelectorAll("[data-pick]").forEach((td) => td.onclick = () => select(st.poles[+td.dataset.pick].id));
+    bindDetail();
     root.querySelectorAll("tr[data-a] input, tr[data-a] select").forEach((el) => {
       el.onchange = () => {
         const a = st.areas[+el.closest("tr").dataset.a], k = el.dataset.k;
@@ -154,15 +210,61 @@ export function initAreaUI({ root, setStatus, getIes: getIesAll, getMF, saveXlsx
     root.querySelector("#avAdd").onclick = () => {
       const last = st.poles[st.poles.length - 1];
       const id = nextId();
-      st.poles.push(last ? { ...last, id, x: last.x + 5 } : { id, x: 0, y: 0, H: 10, aim: 90, tilt: 30, n: 1, ies: getIes()[0] || null, iesWant: "" });
-      st.sel = id; render();
+      st.poles.push(last ? { ...last, id, x: last.x + 5, lamps: copyLamps(poleLamps(last)) } : { id, x: 0, y: 0, H: 10, aim: 90, tilt: 30, n: 1, ies: getIes()[0] || null, iesWant: "", lamps: [newLamp()] });
+      st.sel = id; st.selLamp = null; render();
     };
     root.querySelector("#avDup").onclick = () => {
       const p = st.poles.find((q) => q.id === st.sel); if (!p) return;
-      const id = nextId(); st.poles.push({ ...p, id, x: p.x + 3, y: p.y + 3 }); st.sel = id; render();
+      const id = nextId(); st.poles.push({ ...p, id, x: p.x + 3, y: p.y + 3, lamps: copyLamps(poleLamps(p)) }); st.sel = id; st.selLamp = null; render();
     };
     root.querySelector("#avAddA").onclick = () => { st.areas.push({ name: `Vùng ${st.areas.length + 1}`, x0: 0, y0: 0, L: 20, W: 10, step: null, req: null, MF: null, poly: null }); render(); };
     bindCanvas();
+  }
+
+  // đổi trụ/đèn đang chọn: chỉ dựng lại ngăn chi tiết (không dựng lại bảng/canvas → không mất focus, không ngắt thao tác kéo)
+  function renderDetail() {
+    const w = root.querySelector("#avDetailWrap"); if (!w) return;
+    w.innerHTML = detailHtml(); bindDetail();
+  }
+  function select(id, lampIx = null) {
+    const changed = st.sel !== id || st.selLamp !== lampIx;
+    st.sel = id; st.selLamp = lampIx; markSel();
+    if (changed) renderDetail();
+    drawPlan();
+  }
+  function bindDetail() {
+    const p = selPole(); if (!p) return;
+    p.lamps = poleLamps(p);
+    const rerender = () => { const y = window.scrollY; render(); window.scrollTo(0, y); };
+    root.querySelectorAll("#avDetail [data-l] input, #avDetail [data-l] select").forEach((el) => {
+      const i = +el.closest("[data-l]").dataset.l, k = el.dataset.lk;
+      el.onfocus = () => { if (st.selLamp !== i) { st.selLamp = i; root.querySelectorAll("#avDetail .lamp").forEach((d) => d.classList.toggle("on", +d.dataset.l === i)); drawPlan(); } };
+      el.onchange = el.oninput = (e) => {
+        const l = p.lamps[i];
+        if (k === "ies") { if (e.type === "input") return; l.ies = getIes().find((x) => x.name === el.value) || null; l.iesWant = el.value; rerender(); return; }
+        if (k === "iesWant") { l.iesWant = el.value; return; }
+        const v = N(el.value);
+        if (k === "H") l.H = v > 0 ? v : null;
+        else if (v == null) return;
+        else if (k === "tilt") l.tilt = Math.max(0, Math.min(90, v));
+        else if (k === "arm") l.arm = Math.max(0, v);
+        else l[k] = v;
+        p.n = p.lamps.length; recalc();
+        if (e.type === "change") { const svg = root.querySelector("#avDetail .compass"); if (svg) svg.outerHTML = compass(p.lamps); }
+      };
+    });
+    root.querySelectorAll("[data-ldel]").forEach((b) => b.onclick = () => { p.lamps.splice(+b.dataset.ldel, 1); p.n = p.lamps.length; st.selLamp = null; rerender(); });
+    root.querySelector("#avLAdd").onclick = () => {
+      const last = p.lamps[p.lamps.length - 1];
+      p.lamps.push(last ? { ...last, aim: ((last.aim || 0) + 90) % 360 } : newLamp()); p.n = p.lamps.length; st.selLamp = p.lamps.length - 1; rerender();
+    };
+    root.querySelector("#avLSpread").onclick = () => { p.lamps = spreadLamps(p.lamps, p.lamps[0].aim || 0); rerender(); };
+    const cp = root.querySelector("#avLCopy");
+    if (cp) cp.onchange = () => {
+      const targets = cp.value === "*" ? st.poles.filter((q) => q !== p) : st.poles.filter((q) => q.id === cp.value);
+      for (const q of targets) { q.lamps = copyLamps(p.lamps); q.n = q.lamps.length; }
+      setStatus(`Đã sao chép ${p.lamps.length} đèn của trụ ${p.id} sang ${targets.length} trụ.`); rerender();
+    };
   }
 
   function markSel() { root.querySelectorAll("tr[data-i]").forEach((tr) => tr.classList.toggle("sel", st.poles[+tr.dataset.i] && st.poles[+tr.dataset.i].id === st.sel)); const d = root.querySelector("#avDup"); if (d) d.disabled = !st.sel; }
@@ -176,7 +278,7 @@ export function initAreaUI({ root, setStatus, getIes: getIesAll, getMF, saveXlsx
     const dpr = Math.min(3, window.devicePixelRatio || 1), cssW = cv.clientWidth || 600;
     const w = Math.round(cssW * dpr), h = Math.round(cssW * 0.62 * dpr);
     if (cv.width !== w || cv.height !== h) { cv.width = w; cv.height = h; }   // vẽ đúng độ phân giải màn hình → chữ rõ
-    view = drawAreaPlan(cv.getContext("2d"), cv.width, cv.height, st, { sel: st.sel, colors: colors(), px: dpr, bounds: dragBounds });
+    view = drawAreaPlan(cv.getContext("2d"), cv.width, cv.height, st, { sel: st.sel, selLamp: st.selLamp, colors: colors(), px: dpr, bounds: dragBounds });
     const lg = root.querySelector("#avLegend");
     if (lg && st.result) {
       const [lo, hi] = view.range, grad = [0, .25, .5, .75, 1].map((t) => `rgb(${heatColor(t).join(",")}) ${t * 100}%`).join(",");
@@ -207,29 +309,37 @@ export function initAreaUI({ root, setStatus, getIes: getIesAll, getMF, saveXlsx
     const hit = (px, py) => {
       let best = null, bd = 18 * (window.devicePixelRatio || 1);
       for (const p of st.poles) {
-        const a = (p.aim || 0) * Math.PI / 180, reach = Math.max(3, Math.min(40, p.H * Math.tan(Math.min(75, p.tilt || 0) * Math.PI / 180)));
-        const [hx, hy] = view.toScreen(p.x + reach * Math.cos(a), p.y + reach * Math.sin(a));
         const [sx, sy] = view.toScreen(p.x, p.y);
-        const d1 = Math.hypot(px - sx, py - sy), d2 = Math.hypot(px - hx, py - hy);
+        const d1 = Math.hypot(px - sx, py - sy);
         if (d1 < bd) { bd = d1; best = { p, mode: "move" }; }
-        if (d2 < bd) { bd = d2; best = { p, mode: "aim" }; }
+        poleLamps(p).forEach((l, i) => {
+          const [hx, hy] = view.toScreen(...lampHandle(p, l)), d2 = Math.hypot(px - hx, py - hy);
+          if (d2 < bd) { bd = d2; best = { p, mode: "aim", li: i }; }
+        });
       }
       return best;
     };
     cv.onpointerdown = (e) => {
       const [px, py] = pt(e), h = hit(px, py);
-      if (!h) { st.sel = null; markSel(); drawPlan(); return; }
-      st.sel = h.p.id; markSel(); drag = h; dragBounds = view.bounds; cv.setPointerCapture(e.pointerId); drawPlan();
+      if (!h) { if (st.sel) select(null); return; }
+      select(h.p.id, h.mode === "aim" ? h.li : (st.sel === h.p.id ? st.selLamp : null));
+      drag = h; dragBounds = view.bounds; cv.setPointerCapture(e.pointerId); drawPlan();
     };
     cv.onpointermove = (e) => {
       const [px, py] = pt(e);
       if (!drag) { const h = view && hit(px, py); cv.style.cursor = h ? (h.mode === "aim" ? "crosshair" : "grab") : "default"; return; }
       const [wx, wy] = view.toWorld(px, py), p = drag.p;
       if (drag.mode === "move") { p.x = Math.round(wx * 10) / 10; p.y = Math.round(wy * 10) / 10; }
-      else { p.aim = Math.round(Math.atan2(wy - p.y, wx - p.x) * 180 / Math.PI); }
+      else {
+        p.lamps = poleLamps(p);
+        const l = p.lamps[drag.li]; if (!l) return;
+        l.aim = Math.round(Math.atan2(wy - p.y, wx - p.x) * 180 / Math.PI);
+        const inp = root.querySelector(`#avDetail [data-l="${drag.li}"] [data-lk="aim"]`); if (inp) inp.value = l.aim;
+        const svg = root.querySelector("#avDetail .compass"); if (svg) svg.outerHTML = compass(p.lamps);
+      }
       drawPlan();
       const tr = root.querySelector(`tr[data-i="${st.poles.indexOf(p)}"]`);
-      if (tr) { tr.querySelector('[data-k="x"]').value = p.x; tr.querySelector('[data-k="y"]').value = p.y; tr.querySelector('[data-k="aim"]').value = p.aim; }
+      if (tr) { tr.querySelector('[data-k="x"]').value = p.x; tr.querySelector('[data-k="y"]').value = p.y; }
       recalc();
     };
     cv.onpointerup = cv.onpointercancel = cv.onlostpointercapture = () => { if (drag) { drag = null; dragBounds = null; recalc(true); } };
@@ -237,17 +347,28 @@ export function initAreaUI({ root, setStatus, getIes: getIesAll, getMF, saveXlsx
 
   // ---------- nạp dữ liệu ----------
   function loadState(s, name) {
-    st.poles = s.poles; st.areas = s.areas; st.warnings = s.warnings || []; st.name = name || ""; st.sel = null; st.areaIx = 0;
+    st.poles = s.poles.map((p) => ({ ...p, lamps: copyLamps(poleLamps(p)) })); st.areas = s.areas; st.warnings = s.warnings || []; st.name = name || ""; st.sel = null; st.selLamp = null; st.areaIx = 0;
     render();
     setStatus(`Khu vực: ${st.poles.length} trụ, ${st.areas.length} vùng${st.warnings.length ? ` · ${st.warnings.length} cảnh báo` : ""}. ${getIes().length ? "Kéo trụ hoặc sửa bảng — kết quả tự tính lại." : "Chọn thư mục IES để tính."}`, st.warnings.length > 0);
   }
   function loadWorkbook(wb, name) {
     const XLSX = window.XLSX;
     const rd = (n) => wb.SheetNames.includes(n) ? XLSX.utils.sheet_to_json(wb.Sheets[n], { defval: null }) : [];
-    loadState(parseAreaRows({ poleRows: rd("VI TRI TRU"), areaRows: rd("VUNG TINH") }, getIes()), name);
+    loadState(parseAreaRows({ poleRows: rd("VI TRI TRU"), areaRows: rd("VUNG TINH"), lampRows: rd("DEN TREN TRU") }, getIes()), name);
   }
-  function loadSample() {
+  function loadSample(kind) {
     const ies = getIes(), e = ies[0] || null;
+    if (kind === "plaza") {
+      const four = (start, tilt) => spreadLamps(Array.from({ length: 4 }, () => ({ aim: 0, tilt, arm: 0.6, H: null, ies: e, iesWant: e ? e.name : "" })), start);
+      // trụ giữa 4 đèn chia đều (cần chữ thập); 4 trụ góc mỗi trụ 2 đèn xoè ±30° hướng vào giữa
+      const two = (aim) => [-30, 30].map((d) => ({ aim: aim + d, tilt: 30, arm: 0.5, H: null, ies: e, iesWant: e ? e.name : "" }));
+      const poles = [{ id: "T1", x: 30, y: 25, H: 12, lamps: four(45, 30) },
+        ...[[6, 6, 45], [54, 6, 135], [54, 44, -135], [6, 44, -45]].map(([x, y, aim], i) => ({ id: `T${i + 2}`, x, y, H: 10, lamps: two(aim) }))];
+      for (const p of poles) { p.n = p.lamps.length; p.ies = e; p.iesWant = e ? e.name : ""; p.aim = p.lamps[0].aim; p.tilt = p.lamps[0].tilt; }
+      const r = findReq("TCVN13608-B7-I-cv-santhoatdong") || null;
+      loadState({ poles, areas: [{ name: "Quảng trường", x0: 0, y0: 0, L: 60, W: 50, step: 1, req: r ? { id: r.id, Eav: r.Eav, Uo: r.Uo, label: r.label } : null, MF: null, poly: null }], warnings: e ? [] : ["Chưa chọn thư mục IES — chọn để tính độ rọi."] }, "Quang truong mau");
+      select("T1"); return;
+    }
     const poles = [[-3, -2, 35], [20, -2, 90], [43, -2, 145], [-3, 22, -35], [20, 22, -90], [43, 22, -145]]
       .map(([x, y, aim], i) => ({ id: `T${i + 1}`, x, y, H: 12, aim, tilt: 35, n: 2, ies: e, iesWant: e ? e.name : "" }));
     const r = findReq("TCVN13608-B12-luyentap");
@@ -255,7 +376,10 @@ export function initAreaUI({ root, setStatus, getIes: getIesAll, getMF, saveXlsx
   }
   function onIes() {
     const ies = getIes();
-    for (const p of st.poles) if (!p.ies && p.iesWant) p.ies = matchAreaIes(p.iesWant, ies);
+    for (const p of st.poles) {
+      if (!p.ies && p.iesWant) p.ies = matchAreaIes(p.iesWant, ies);
+      for (const l of poleLamps(p)) if (!l.ies && l.iesWant) l.ies = matchAreaIes(l.iesWant, ies);
+    }
     if (st.poles.length || st.areas.length) render();
   }
 
@@ -289,5 +413,5 @@ export function initAreaUI({ root, setStatus, getIes: getIesAll, getMF, saveXlsx
     setStatus("Đã tạo báo cáo PDF khu vực.");
   }
 
-  return { render, loadWorkbook, loadSample, onIes, recalc, saveExcel, exportPdf, downloadTemplate, state: st };
+  return { render, loadWorkbook, loadSample, onIes, recalc, saveExcel, exportPdf, downloadTemplate, state: st, view: () => view };
 }

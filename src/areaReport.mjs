@@ -2,6 +2,7 @@
 import { drawAreaPlan, heatColor } from "./areaDraw.mjs";
 import { vn, fitText, drawTable } from "./report.mjs";
 import { luminaireLabel } from "./mapping.mjs";
+import { poleLamps } from "./area.mjs";
 
 const OK = [31, 138, 76], BAD = [192, 57, 43];
 
@@ -27,7 +28,7 @@ export function renderAreaPdf(doc, { state, result, projectName = "", date = new
   doc.setFontSize(15); doc.text(fitText(doc, title, 182), M, y); y += 6;
   doc.setFontSize(9.5); doc.setTextColor(90, 100, 115);
   doc.text("BÁO CÁO TÍNH TOÁN CHIẾU SÁNG KHU VỰC — độ rọi ngang duy trì (TCVN 13608:2023 / EN 12193)", M, y); y += 5;
-  doc.text(`Ngày tính ${date.toLocaleDateString("vi-VN")} · ${result.nPoles} trụ · tổng công suất ${vn(result.power / 1000, 2)} kW`, M, y); y += 6;
+  doc.text(`Ngày tính ${date.toLocaleDateString("vi-VN")} · ${result.nPoles} trụ · ${result.nLamps ?? ""} bộ đèn · tổng công suất ${vn(result.power / 1000, 2)} kW`, M, y); y += 6;
   doc.setTextColor(30, 30, 40);
 
   // Kết quả theo vùng
@@ -51,19 +52,24 @@ export function renderAreaPdf(doc, { state, result, projectName = "", date = new
   for (let k = 0; k < 40; k++) { const c = heatColor(k / 39); doc.setFillColor(c[0], c[1], c[2]); doc.rect(M + k * 2, y, 2.05, 3, "F"); }
   doc.setFontSize(7.6); doc.setTextColor(90, 100, 115);
   doc.text(`${vn(range[0], 0)} lx`, M, y + 6.5); doc.text(`${vn((range[0] + range[1]) / 2, 0)}`, M + 38, y + 6.5); doc.text(`${vn(range[1], 0)} lx`, M + 72, y + 6.5);
-  doc.text("Chấm đỏ = trụ chưa có file IES. Đoạn nét đứt = hướng chiếu.", M + 95, y + 2.5);
+  doc.text("Chấm đỏ = trụ có đèn chưa có file IES. Nét đứt = hướng chiếu từng đèn.", M + 95, y + 2.5);
   doc.setTextColor(30, 30, 40);
 
   // Trang 2: trụ + bộ đèn
   doc.addPage(); y = header(doc, title);
-  doc.setFontSize(11); doc.text("Vị trí trụ đèn", M, y); y += 2;
-  const prow = [["Trụ", "x (m)", "y (m)", "H (m)", "Hướng", "Nghiêng", "Số đèn", "Bộ đèn"]];
-  for (const p of state.poles) prow.push([p.id, vn(p.x, 2), vn(p.y, 2), vn(p.H, 1), vn(p.aim, 0) + "°", vn(p.tilt, 0) + "°", String(p.n),
-    p.ies ? luminaireLabel(p.ies.name) : { t: p.iesWant || "thiếu IES", c: BAD }]);
-  y = drawTable(doc, M, y, [14, 17, 17, 14, 16, 16, 14, 74], prow, { header: true, rh: 6, fs: 8.2 }) + 6;
+  doc.setFontSize(11); doc.text("Vị trí trụ và bộ đèn trên từng trụ", M, y); y += 2;
+  const prow = [["Trụ", "Đèn", "x (m)", "y (m)", "Cao (m)", "Hướng", "Nghiêng", "Vươn (m)", "Bộ đèn"]];
+  for (const p of state.poles) poleLamps(p).forEach((l, i) => prow.push([i ? "" : p.id, String(i + 1), i ? "" : vn(p.x, 2), i ? "" : vn(p.y, 2),
+    vn(l.H ?? p.H, 1), vn(l.aim, 0) + "°", vn(l.tilt, 0) + "°", vn(l.arm || 0, 2),
+    l.ies ? luminaireLabel(l.ies.name) : { t: l.iesWant || "thiếu IES", c: BAD }]));
+  const rowsPerPage = 36;
+  for (let s0 = 1; s0 < prow.length; s0 += rowsPerPage) {
+    if (s0 > 1) { doc.addPage(); y = header(doc, title); }
+    y = drawTable(doc, M, y, [12, 9, 16, 16, 13, 14, 15, 15, 72], [prow[0], ...prow.slice(s0, s0 + rowsPerPage)], { header: true, rh: 6, fs: 8.2 }) + 6;
+  }
 
   const lum = new Map();
-  for (const p of state.poles) if (p.ies) { const k = p.ies.name; const g = lum.get(k) || { ies: p.ies, n: 0 }; g.n += p.n; lum.set(k, g); }
+  for (const p of state.poles) for (const l of poleLamps(p)) if (l.ies) { const k = l.ies.name; const g = lum.get(k) || { ies: l.ies, n: 0 }; g.n += 1; lum.set(k, g); }
   if (y > 240) { doc.addPage(); y = header(doc, title); }
   doc.setFontSize(11); doc.text("Bộ đèn sử dụng", M, y); y += 2;
   const lrow = [["Bộ đèn (tên file IES)", "Nhà SX", "P (W)", "Φ (lm)", "lm/W", "Số bộ", "Tổng (kW)"]];
