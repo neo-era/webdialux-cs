@@ -203,6 +203,7 @@ body.area .not-area{display:none!important}
           <div class="menu-sep" id="verMenu">WebDialux-CS v1.2</div>
           <button class="menu-item only-mobile" id="mPdf" role="menuitem">📑 Xuất PDF</button>
           <button class="menu-item" id="mHelp" role="menuitem">📖 Hướng dẫn sử dụng</button>
+          <button class="menu-item" id="mRaw" role="menuitem">🔄 Chuyển Excel thô → file dữ liệu (đường)</button>
           <button class="menu-item" id="mTemplate" role="menuitem">⬇ Tải Excel mẫu (đường)</button>
           <button class="menu-item" id="mTemplateArea" role="menuitem">⬇ Tải Excel mẫu khu vực</button>
           <button class="menu-item" id="mTemplatePark" role="menuitem">⬇ Tải Excel mẫu công viên</button>
@@ -273,6 +274,14 @@ body.area .not-area{display:none!important}
         </tbody></table></li>
       <li><b>Loại đèn</b> — nếu để trống, app <b>tự chọn</b> bộ đèn công suất nhỏ nhất vẫn Đạt từ thư mục IES; nếu ghi model (Loại đèn + Công suất LED) thì app dùng đúng đèn đó.</li>
       <li><b>Thư mục IES</b>: chứa các file <code>.ies</code> (IESNA LM-63). App tự dò theo thư mục con. Tên file nên có model + công suất (vd <code>…MAGNOLIA…60W…</code>) để khớp đúng.</li>
+    </ul>
+
+    <h3>1b. Chuyển Excel thô → file dữ liệu</h3>
+    <ul>
+      <li>☰ Menu → <b>🔄 Chuyển Excel thô → file dữ liệu (đường)</b> → chọn file tổng hợp (xlsx/xlsm) có các cột cùng tên với file mẫu (tiêu đề ở dòng bất kỳ, được xuống dòng, có chú thích trong ngoặc).</li>
+      <li>App tự tìm bảng, chỉ chép <b>thông số đầu vào</b> (thông tin tuyến, cấp đường, độ cao, vươn, góc nghiêng, lòng đường, khoảng cách trụ, bố trí, dải phân cách, số làn…); <b>bỏ qua</b> mọi cột kết quả, yêu cầu QCVN, điểm, xếp hạng, đèn được chọn.</li>
+      <li>Nhiều dòng phương án đèn của cùng một tuyến gộp thành <b>1 dòng</b>, để trống bộ đèn (app tự quét thư mục IES); góc nghiêng lấy theo dòng <i>Loại đèn được chọn</i>. Thông số khác nhau giữa các dòng của một tuyến → cảnh báo.</li>
+      <li>File mới <code>WebDialux_DuLieu_…xlsx</code> được tải về và <b>nạp sẵn</b> để chạy. Tuyến thiếu độ cao / lòng đường / khoảng cách trụ: ô tô vàng, xem danh sách cảnh báo dưới trang.</li>
     </ul>
 
     <h3>2. Các bước chạy</h3>
@@ -861,6 +870,36 @@ $("mTemplateBridge").onclick = async () => { $("menu").hidden = true; try{ await
 $("mTemplateArch").onclick = async () => { $("menu").hidden = true; try{ await AREA.downloadTemplate("mythuat"); }catch(e){ setStatus("Lỗi tạo Excel mẫu mỹ thuật: "+e.message,true); } };
 $("mTemplatePark").onclick = async () => { $("menu").hidden = true; try{ await AREA.downloadTemplate("congvien"); }catch(e){ setStatus("Lỗi tạo Excel mẫu công viên: "+e.message,true); } };
 $("mTemplateArea").onclick = async () => { $("menu").hidden = true; try{ await AREA.downloadTemplate(); }catch(e){ setStatus("Lỗi tạo Excel mẫu khu vực: "+e.message,true); } };
+// ---- Chuyển Excel thô → file dữ liệu đúng mẫu DU LIEU TUYEN (chỉ thông số đầu vào, bỏ cột kết quả) ----
+$("mRaw").onclick = () => {
+  $("menu").hidden = true;
+  const inp = Object.assign(document.createElement("input"), { type: "file", accept: ".xlsx,.xlsm,.xls" });
+  inp.onchange = async () => {
+    const f = inp.files[0]; if (!f) return;
+    try {
+      setStatus(`Đang đọc ${f.name}…`);
+      const { convertRawSheets } = await import("./src/rawImport.mjs");
+      const { buildTemplateWorkbook } = await import("./src/template.mjs");
+      if (!window.ExcelJS) throw new Error("chưa tải được thư viện ExcelJS");
+      const w = XLSX.read(await f.arrayBuffer(), { type: "array" });
+      const sheets = w.SheetNames.map((n) => ({ name: n, aoa: XLSX.utils.sheet_to_json(w.Sheets[n], { header: 1, defval: null, raw: true }) }));
+      const out = convertRawSheets(sheets);
+      const buf = await (await buildTemplateWorkbook(window.ExcelJS, { version: VERSION, rows: out.rows })).xlsx.writeBuffer();
+      const base = f.name.replace(/\.(xlsx|xlsm|xls)$/i, ""), name = outName("DuLieu", base, "xlsx");
+      await saveXlsxBuffer(buf, name);
+      // nạp luôn file vừa tạo để chạy ngay
+      setMode("road"); xlsxBuf = buf; rows = null; loadWb(name);
+      if (!rows) return;                                   // nạp lỗi: giữ thông báo lỗi của loadWb
+      const I = out.info;
+      setStatus(`Đã chuyển ${I.routes} tuyến (${I.rawRows} dòng thô, sheet "${I.sheet}", tiêu đề dòng ${I.headerRow}) → ${name} — đã tải về và nạp sẵn: ${iesIndex.length ? "bấm ▶ Chạy" : "chọn thư mục IES rồi ▶ Chạy"}. Chép ${I.mapped.length} cột thông số; bỏ qua ${I.ignored.length} cột kết quả/bộ đèn.${I.incomplete ? ` ⚠ ${I.incomplete} tuyến thiếu thông số bắt buộc (ô tô vàng trong file).` : ""}`, I.incomplete > 0);
+      const esc = (t) => String(t).replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
+      $("note").innerHTML = `<details${out.warnings.length ? " open" : ""}><summary>Chi tiết chuyển đổi (${out.warnings.length} cảnh báo)</summary>`
+        + `<p><b>Cột đã chép:</b> ${I.mapped.map(esc).join(" · ")}</p><p><b>Bỏ qua:</b> ${I.ignored.map(esc).join(" · ")}</p>`
+        + (out.warnings.length ? `<ul>${out.warnings.map((x) => `<li>${esc(x)}</li>`).join("")}</ul>` : "") + `</details>`;
+    } catch (e) { setStatus("Lỗi chuyển Excel thô: " + e.message, true); }
+  };
+  inp.click();
+};
 $("mTemplate").onclick = async () => {
   $("menu").hidden = true;
   try{

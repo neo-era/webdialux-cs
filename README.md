@@ -8,6 +8,7 @@ Chạy ngay: **https://neo-era.github.io/webdialux-cs/** · Phiên bản: xem `s
 - Đọc **Excel dữ liệu tuyến** (sheet `DU LIEU TUYEN`) + **thư mục IES** (IESNA LM-63, dò cả thư mục con).
 - **Tự xác định cấp đường** theo ưu tiên: cột `Cấp đường` → cột `Loại tuyến` (tên theo QCVN 07) → suy từ hình học.
 - **Hai chế độ**: *Đa phương án* (tính tất cả bộ đèn trong thư viện, chấm điểm Borda lần 1/lần 2, chọn ✓ đèn tối ưu = công suất nhỏ nhất vẫn Đạt) và *Từng phương án* (1 đèn/dòng).
+- **Chuyển Excel thô → file dữ liệu** (v3.4, ☰ Menu): đọc file tổng hợp có cột cùng tên file mẫu (tiêu đề ở dòng bất kỳ, xuống dòng, chú thích trong ngoặc, nhiều dòng phương án đèn/tuyến), chỉ chép thông số đầu vào — bỏ cột kết quả/điểm/xếp hạng/đèn được chọn; mỗi tuyến 1 dòng, để trống bộ đèn (app tự quét IES), góc nghiêng theo dòng đèn được chọn; cảnh báo thông số khác nhau trong tuyến và tuyến thiếu H/lòng đường/khoảng cách trụ (tô vàng); tải về file `WebDialux_DuLieu_…xlsx` và nạp sẵn để chạy.
 - **Excel mẫu** (☰ Menu → Tải Excel mẫu): sheet `DU LIEU TUYEN` định dạng sẵn (tô màu nhóm cột, ghi chú, danh sách chọn, kiểm số), sheet `CAP DUONG QCVN07-7-23` (ngưỡng 8 cấp A…E + quy đổi Loại tuyến → cấp) và `HUONG DAN`.
 - **Vỉa hè & dải phân cách**: cột *Độ rộng vỉa hè (m)* giới hạn dải tính SR = min(5 m, W/2, vỉa hè) và được vẽ trong 3D/mặt bằng; cột *Độ rộng dải phân cách (m)* để vẽ dải phân cách khi *Dải phân cách giữa* = có (số liệu tính không đổi).
 - **Tư thế lắp đặt thật** (v2.3): độ rọi, độ chói, TI, Imax 70/80/90°, ULR/ULOR tính theo đèn đã nghiêng/xoay; cột *Góc xoay bộ đèn*, *Số bộ đèn/trụ*, *Hệ số bảo trì MF* theo tuyến; bố trí *giữa* (trụ trên dải phân cách, cần đôi). Cường độ lấy đúng IES, không nhân ballast factor (như DIALux). Ul theo tim làn của từng observer (EN 13201-3).
@@ -50,6 +51,7 @@ Chạy local: `python -m http.server 8080` trong thư mục repo → http://loca
 | `src/xlsxpro.mjs` | Workbook kết quả 3 sheet (ExcelJS); `toRankedShape` dùng chung cho 2 chế độ |
 | `src/area.mjs`, `src/areaReq.mjs`, `src/areaDraw.mjs`, `src/areaReport.mjs`, `src/areaui.mjs` | Chế độ khu vực: tính, bảng yêu cầu, vẽ mặt bằng, PDF, giao diện |
 | `src/bridge.mjs`, `src/bridgeDraw.mjs`, `src/bridgeReport.mjs`, `src/bridgeui.mjs` | Chế độ cầu: trắc dọc, tính trên mặt dốc, Excel; vẽ mặt cắt / trắc dọc / mặt bằng / 3D; PDF; giao diện |
+| `src/rawImport.mjs` | Chuyển Excel thô (bảng tổng hợp) → dòng dữ liệu đúng mẫu DU LIEU TUYEN |
 | `src/template.mjs` | Excel mẫu nhập liệu (ExcelJS): dữ liệu tuyến, bảng cấp đường QCVN 07-7:2023, hướng dẫn |
 | `src/report.mjs`, `src/font.mjs` | Báo cáo PDF (jsPDF + canvas), font tiếng Việt nhúng |
 | `src/pdfparts.mjs` | Chia báo cáo nhiều tuyến thành nhiều file PDF |
