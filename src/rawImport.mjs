@@ -75,6 +75,8 @@ const clean = (v) => {
   return /^-?\d+([.,]\d+)?$/.test(t) ? parseFloat(t.replace(",", ".")) : t;     // số ghi dạng chữ ("9,5") → số
 };
 const key = (v) => String(v ?? "").replace(/\s+/g, " ").trim().toLowerCase();
+// ghi chú loại tuyến khỏi đợt chạy
+const DROP = /^\s*(bỏ ra|bỏ|loại bỏ|loại ra|không chạy|không tính|xoá|xóa)\s*$/i;
 const GEO_COLS = [COLS.H, COLS.width, COLS.spacing, COLS.vuon, COLS.setback, COLS.lanes];
 const ARR_KNOWN = /giữa|giua|center|median|so le|stagger|đối xứng|doi xung|hai bên|2 bên|1 bên|một bên|mot ben|một phía|1 phía/i;
 const ARR_CANON = { single: "1 bên", opposite: "đối xứng", staggered: "so le", center: "giữa" };
@@ -124,7 +126,11 @@ export function convertRawSheets(sheets) {
 
   // 3) mỗi tuyến 1 dòng mẫu
   const warnings = [], out = [];
+  const dropped = [];
   for (const rt of routes) {
+    // tuyến được đánh dấu loại ở cột ghi chú (vd "bỏ ra") → không đưa vào file dữ liệu
+    const mark = rt.rows.flatMap((x) => x.row.map((v, j) => (m.map[j] ? null : v))).find((v) => typeof v === "string" && DROP.test(v));
+    if (mark) { dropped.push(`${rt.name} (dòng ${rt.rows[0].excelRow}, ghi chú "${mark.trim()}")`); continue; }
     // "Loại đèn được chọn" là ô tóm tắt của tuyến (vd "1- Carina_Midi") = ô "Xếp hạng" của dòng đèn được chọn;
     // không khớp thì so cột Fitting thứ hai (fitting đèn chọn) với cột Fitting của từng dòng; vẫn không thấy → dòng đầu + cảnh báo
     let chosen = rt.rows[0];
@@ -168,7 +174,7 @@ export function convertRawSheets(sheets) {
   const mapped = Object.values(m.map).filter((t) => !LAMP_COLS.has(t));
   return {
     rows: out, warnings,
-    info: { sheet: s.name, headerRow: hr + 1, rawRows, routes: routes.length, mapped, incomplete: out.filter((o) => o.__missing).length,
+    info: { sheet: s.name, headerRow: hr + 1, rawRows, routes: out.length, dropped, mapped, incomplete: out.filter((o) => o.__missing).length,
       ignored: m.ignored.map((x) => x.head).concat(Object.values(m.map).filter((t) => LAMP_COLS.has(t)).map((t) => `${t} (bộ đèn — để app tự chọn)`)) },
   };
 }

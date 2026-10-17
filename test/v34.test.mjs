@@ -121,3 +121,12 @@ test("file thô có ô gộp, hàng nhóm/tổng, số ghi dạng chữ, bố tr
   assert.equal(out.rows[1][COLS.arrangement], "2 phía");
   assert.ok(out.warnings.some((w) => /2 phía/.test(w)));
 });
+
+test("tuyến ghi chú \"bỏ ra\" ở cột ghi chú (không tiêu đề) → loại khỏi file dữ liệu, liệt kê lại", () => {
+  const aoa = sheetAoa().map((r) => r.concat([null, null]));
+  aoa[5][RAW_HEAD.length + 1] = "bỏ ra ";                                    // dòng STT 1 (Cầu Chữ Y) ghi chú bỏ ra
+  const out = convertRawSheets([{ name: "X", aoa }]);
+  assert.deepEqual(out.rows.map((r) => r[COLS.tuyen]), ["Tạ Quang Bửu (Đ1)"]);
+  assert.equal(out.info.routes, 1);
+  assert.ok(out.info.dropped[0].startsWith("Cầu Chữ Y (Q8)"));
+});

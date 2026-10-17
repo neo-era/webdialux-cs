@@ -891,10 +891,10 @@ $("mRaw").onclick = () => {
       setMode("road"); xlsxBuf = buf; rows = null; loadWb(name);
       if (!rows) return;                                   // nạp lỗi: giữ thông báo lỗi của loadWb
       const I = out.info;
-      setStatus(`Đã chuyển ${I.routes} tuyến (${I.rawRows} dòng thô, sheet "${I.sheet}", tiêu đề dòng ${I.headerRow}) → ${name} — đã tải về và nạp sẵn: ${iesIndex.length ? "bấm ▶ Chạy" : "chọn thư mục IES rồi ▶ Chạy"}. Chép ${I.mapped.length} cột thông số; bỏ qua ${I.ignored.length} cột kết quả/bộ đèn.${I.incomplete ? ` ⚠ ${I.incomplete} tuyến thiếu thông số bắt buộc (ô tô vàng trong file).` : ""}`, I.incomplete > 0);
+      setStatus(`Đã chuyển ${I.routes} tuyến${I.dropped.length ? ` (bỏ ${I.dropped.length} tuyến ghi chú "bỏ ra")` : ""} (${I.rawRows} dòng thô, sheet "${I.sheet}", tiêu đề dòng ${I.headerRow}) → ${name} — đã tải về và nạp sẵn: ${iesIndex.length ? "bấm ▶ Chạy" : "chọn thư mục IES rồi ▶ Chạy"}. Chép ${I.mapped.length} cột thông số; bỏ qua ${I.ignored.length} cột kết quả/bộ đèn.${I.incomplete ? ` ⚠ ${I.incomplete} tuyến thiếu thông số bắt buộc (ô tô vàng trong file).` : ""}`, I.incomplete > 0);
       const esc = (t) => String(t).replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
       $("note").innerHTML = `<details${out.warnings.length ? " open" : ""}><summary>Chi tiết chuyển đổi (${out.warnings.length} cảnh báo)</summary>`
-        + `<p><b>Cột đã chép:</b> ${I.mapped.map(esc).join(" · ")}</p><p><b>Bỏ qua:</b> ${I.ignored.map(esc).join(" · ")}</p>`
+        + (I.dropped.length ? `<p><b>Tuyến bỏ ra theo ghi chú:</b> ${I.dropped.map(esc).join(" · ")}</p>` : "") + `<p><b>Cột đã chép:</b> ${I.mapped.map(esc).join(" · ")}</p><p><b>Bỏ qua:</b> ${I.ignored.map(esc).join(" · ")}</p>`
         + (out.warnings.length ? `<ul>${out.warnings.map((x) => `<li>${esc(x)}</li>`).join("")}</ul>` : "") + `</details>`;
     } catch (e) { setStatus("Lỗi chuyển Excel thô: " + e.message, true); }
   };
