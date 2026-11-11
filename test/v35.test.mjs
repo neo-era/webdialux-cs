@@ -187,3 +187,17 @@ test("index.html: mở file mới thì xoá kết quả cũ; PDF dùng góc nghi
   assert.match(html, /routeRows = null;\s*\/\/ file mới: bỏ kết quả[^\n]*\n\s*if \(results\) \{ results = null; resRows = null;/);
   assert.match(html, /o\.iesName===pk0\.e\.name && o\.tilt!=null/);
 });
+
+test("Tổng hợp đèn: công thức đếm khớp — Hãng/Bộ đèn/CS ở sheet chi tiết (dòng ✓) trùng khoá sheet Tổng hợp đèn", async () => {
+  const ncc = route({ ...geo }, [{ fitting: "x", model: "MAGNOLIA", ncc: "Tên NCC khác hãng IES", power: 60, tilt: 10 }]);
+  const res = runBatchRanked([ncc, R1], idx, { MF: 0.8 });
+  const wb = await buildResultWorkbook(ExcelJS, { results: res, rows: [ncc, R1] });
+  const s1 = wb.getWorksheet("Chấm điểm chi tiết"), s2 = wb.getWorksheet("Tổng hợp đèn");
+  const val = (c) => (c.value && typeof c.value === "object" && "formula" in c.value ? c.value.result : c.value);
+  const keys = new Set();
+  for (let r = 5; r <= 5 + 2; r++) { const k = [2, 3, 4].map((c) => val(s2.getCell(r, c))); if (k[0]) keys.add(k.join("|")); }
+  const ticks = [];
+  s1.eachRow((row) => { if (val(row.getCell("AL")) === "✓") ticks.push([val(row.getCell("S")), val(row.getCell("V")), val(row.getCell("U"))].join("|")); });
+  assert.equal(ticks.length, 2);
+  for (const t of ticks) assert.ok(keys.has(t), `${t} ∉ ${[...keys]}`);
+});
