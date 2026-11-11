@@ -1,7 +1,7 @@
 // Chạy engine hàng loạt từ dữ liệu Excel + thư viện IES.
 import { parseIES } from "./ies.mjs";
 import { calcRoad } from "./engine.mjs";
-import { rowToGeometry, matchIES, modelKeyword, powerFromName } from "./mapping.mjs";
+import { rowToGeometry, matchIES, modelKeyword, powerFromName, COLS } from "./mapping.mjs";
 import { scoreOptions } from "./scoring.mjs";
 
 /** files: [{name, text}] -> chỉ mục [{name, model, power, manufac, ph}] */
@@ -116,6 +116,9 @@ export function runBatchRanked(rows, iesIndex, opts = {}) {
     if (g.input.H == null || g.input.width == null || g.input.spacing == null) {
       return { ...base, status: "thiếu hình học", reason: g.warnings.join("; "), options: [] };
     }
+    // file tổng hợp: tuyến có danh sách bộ đèn chỉ định (mỗi bộ 1 dòng, góc nghiêng riêng) -> tính đúng các bộ đó
+    const lamps = (row.__lamps || []).filter((l) => l.model != null || l.fitting != null);
+    if (lamps.length) return rankLamps(row, lamps, base, iesIndex, { MF, rfn, q0 });
     // nếu dòng CHỈ ĐỊNH model -> chỉ xét các IES cùng model; không thì xét tất cả hãng
     const mk = modelKeyword(g.meta.model) || modelKeyword(g.meta.fitting);
     const pool = mk ? cands.filter((e) => e.model === mk) : cands;
@@ -146,6 +149,51 @@ export function runBatchRanked(rows, iesIndex, opts = {}) {
     const anyPass = options.some((o) => o.pass);
     return { ...base, status: "ok", req, options, chosen, pass: anyPass };
   });
+}
+
+/** Tách 1 tuyến (có __lamps) thành các dòng phẳng, mỗi dòng 1 bộ đèn (Fitting/Loại đèn/NCC/Công suất/Góc nghiêng riêng). */
+export function lampRows(row) {
+  const lamps = (row.__lamps || []).filter((l) => l.model != null || l.fitting != null);
+  if (!lamps.length) return [row];
+  return lamps.map((l) => ({
+    ...row, [COLS.fitting]: l.fitting ?? null, [COLS.model]: l.model ?? null, [COLS.ncc]: l.ncc ?? null,
+    [COLS.power]: l.power ?? null, [COLS.tilt]: l.tilt ?? row[COLS.tilt] ?? null,
+  }));
+}
+
+function rankLamps(row, lamps, base, iesIndex, { MF, rfn, q0 }) {
+  const raw = [];
+  let req = null;
+  for (const lr of lampRows(row)) {
+    const g = rowToGeometry(lr);
+    const lab = { fitting: g.meta.fitting || null, lampModel: g.meta.model || null, ncc: lr[COLS.ncc] ?? null, tilt: g.input.tilt, power: g.meta.power };
+    const m = matchIES(g.meta, iesIndex);
+    if (!m.ies) { raw.push({ ...lab, iesName: null, model: null, pass: false, missing: `thiếu IES: ${m.reason}` }); continue; }
+    try {
+      const r = calcRoad({ ies: m.ies.ph, ...g.input, MF: g.input.MF ?? MF, ...(q0 ? { q0 } : {}), ...(rfn ? { rfn } : {}) });
+      req = r.req;
+      raw.push({
+        ...lab, iesName: m.ies.name, iesNote: m.reason, model: m.ies.model, manufac: m.ies.manufac, power: m.ies.power ?? g.meta.power, specPower: g.meta.power,
+        Ltb: r.road.Lav, Uo: r.road.Uo, Ul: r.road.Ul, TI: r.road.TI, SR: r.road.SR, En: r.E.avg, pass: r.pass,
+      });
+    } catch (e) { raw.push({ ...lab, iesName: m.ies.name, model: m.ies.model, pass: false, missing: `lỗi tính: ${e.message || e}` }); }
+  }
+  if (!raw.some((x) => !x.missing)) {
+    // không bộ đèn chỉ định nào có IES trong thư mục → quét toàn bộ thư mục như tuyến để trống bộ đèn, ghi rõ lý do
+    const plain = { ...row }; for (const k of [COLS.model, COLS.fitting, COLS.power, COLS.ncc]) delete plain[k];
+    const r = runBatchRanked([plain], iesIndex, { MF, rfn, q0 })[0];
+    const why = `bộ đèn chỉ định không có IES (${raw.map((x) => x.lampModel || x.fitting).join(", ")}) — app quét toàn bộ thư mục IES`;
+    return { ...r, warnings: [...(r.warnings || []), why], specified: false, fallback: why };
+  }
+  const options = scoreOptions(raw).sort((a, b) => {
+    if (a.pass !== b.pass) return a.pass ? -1 : 1;
+    if (a.pass) return (a.rank ?? 1e9) - (b.rank ?? 1e9);
+    if (!!a.missing !== !!b.missing) return a.missing ? 1 : -1;      // đèn tính được trước đèn thiếu IES
+    return (a.power ?? 1e9) - (b.power ?? 1e9);
+  });
+  const chosen = options.find((o) => o.chosen) || null;
+  const input = chosen && chosen.tilt != null ? { ...base.input, tilt: chosen.tilt } : base.input;   // góc nghiêng của bộ đèn được chọn
+  return { ...base, input, status: "ok", req, options, chosen, pass: !!chosen, specified: true };
 }
 
 /** Tự dò theo tuyến (gộp theo STT) — giữ tương thích CLI cũ. */

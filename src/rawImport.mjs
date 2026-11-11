@@ -85,7 +85,7 @@ const ARR_CANON = { single: "1 bên", opposite: "đối xứng", staggered: "so 
  * sheets: [{name, aoa}] (aoa = mảng các hàng, mỗi hàng mảng giá trị ô — XLSX sheet_to_json(header:1)).
  * Trả {rows: [{tên cột mẫu: giá trị}], warnings: [], info: {sheet, headerRow (1-based), rawRows, routes, mapped: [..], ignored: [..]}}.
  */
-export function convertRawSheets(sheets) {
+export function convertRawSheets(sheets, { keepLamps = false } = {}) {
   // 1) tìm bảng: hàng (trong 20 hàng đầu mỗi sheet) khớp nhiều cột mẫu nhất, bắt buộc có "Tuyến đường"
   let best = null;
   for (const s of sheets) {
@@ -109,9 +109,11 @@ export function convertRawSheets(sheets) {
     const name = clean(row[ci]);
     const stt = si != null ? clean(row[si]) : null;
     const hasGeo = GEO_COLS.some((t) => idx[t] != null && typeof clean(row[idx[t]]) === "number");
+    // file tổng hợp: ô hình học có thể gộp theo tuyến → dòng chỉ có thông tin bộ đèn vẫn là phương án đèn của tuyến
+    const hasLamp = keepLamps && [COLS.model, COLS.fitting].some((t) => idx[t] != null && !blank(row[idx[t]]));
     if (blank(name)) {
       // ô tên/STT gộp (chỉ ô đầu có giá trị): dòng còn số liệu → phương án đèn tiếp theo của tuyến đang đọc
-      if (cur && blank(stt) && hasGeo) { rawRows++; cur.rows.push({ row, excelRow: r + 1 }); }
+      if (cur && blank(stt) && (hasGeo || hasLamp)) { rawRows++; cur.rows.push({ row, excelRow: r + 1 }); }
       continue;
     }
     // hàng đánh số cột (1, 2, 3 …) ngay dưới tiêu đề
@@ -168,6 +170,16 @@ export function convertRawSheets(sheets) {
     if (miss.length) {
       warnings.push(`Tuyến "${rt.name}" (dòng ${rt.rows[0].excelRow}): thiếu ${miss.join(", ")} — điền bổ sung (ô tô vàng) để tính được`);
       Object.defineProperty(o, "__missing", { value: miss, enumerable: false });
+    }
+    // giữ danh sách bộ đèn của từng dòng (file mẫu dạng TỔNG HỢP: mỗi dòng 1 phương án đèn, góc nghiêng riêng)
+    if (keepLamps) {
+      const col = (t) => idx[t];
+      const lamps = rt.rows.map((x) => ({
+        fitting: clean(x.row[col(COLS.fitting)]), model: clean(x.row[col(COLS.model)]), ncc: clean(x.row[col(COLS.ncc)]),
+        power: clean(x.row[col(COLS.power)]), tilt: clean(x.row[col(COLS.tilt)]), excelRow: x.excelRow,
+      })).map((l) => { for (const k of Object.keys(l)) if (k !== "excelRow" && blank(l[k])) l[k] = null; return l; })
+        .filter((l) => l.model != null || l.fitting != null);
+      Object.defineProperty(o, "__lamps", { value: lamps, enumerable: false });
     }
     out.push(o);
   }

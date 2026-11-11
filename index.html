@@ -258,7 +258,8 @@ body.area .not-area{display:none!important}
 
     <h3>1. Chuẩn bị dữ liệu</h3>
     <ul>
-      <li><b>File Excel</b> (sheet <code>DU LIEU TUYEN</code>): mỗi dòng là một tuyến/phương án. Cột hình học bắt buộc: Độ cao bộ đèn (m), Độ vươn cần đèn (m), Khoảng cách trụ đến mép đường (m), Độ rộng lòng đường (m), Khoảng cách trụ TB (m), Số làn xe, Góc nghiêng bộ đèn (độ), Cách bố trí trụ, Dải phân cách giữa. Tải <b>Excel mẫu</b> (☰ Menu) để có sẵn đủ cột, danh sách chọn và bảng cấp đường QCVN 07-7:2023.</li>
+      <li><b>File Excel mẫu (đường)</b> theo cấu trúc bảng <b>TỔNG HỢP ĐỀ XUẤT ĐÈN LED</b> (sheet <code>TONG HOP DE XUAT</code>): dòng 1 tiêu đề, dòng 2 nhóm cột, <b>dòng 3 tên cột</b> (55 cột gốc + 8 cột bổ sung phía sau: Loại tuyến, vỉa hè, dải phân cách, góc xoay, số đèn/trụ, MF, CCT, CRI), dữ liệu từ dòng 6. Mỗi tuyến <b>1 dòng</b> (bỏ trống Fitting/Loại đèn → app tự quét thư mục IES, chấm điểm, chọn đèn) hoặc <b>nhiều dòng</b> (mỗi dòng 1 bộ đèn chỉ định, góc nghiêng riêng; STT chỉ ghi ở dòng đầu). Cột 31–55 (QCVN, kết quả, điểm, xếp hạng, đèn được chọn) app tự điền vào file kết quả — sheet <code>TONG HOP DE XUAT</code> đứng đầu, giữ nguyên các sheet kết quả cũ. File tổng hợp có sẵn của phòng (cùng tên cột) mở thẳng được.</li>
+      <li><b>File Excel cũ</b> (sheet <code>DU LIEU TUYEN</code>) vẫn đọc được: mỗi dòng là một tuyến/phương án. Cột hình học bắt buộc: Độ cao bộ đèn (m), Độ vươn cần đèn (m), Khoảng cách trụ đến mép đường (m), Độ rộng lòng đường (m), Khoảng cách trụ TB (m), Số làn xe, Góc nghiêng bộ đèn (độ), Cách bố trí trụ, Dải phân cách giữa.</li>
       <li><b>Độ rộng vỉa hè (m)</b> (tuỳ chọn): giới hạn dải tính SR = min(5 m, ½ lòng đường, vỉa hè) và được vẽ trong phối cảnh 3D, mặt bằng; trụ đứng trên vỉa hè. Để trống: SR như cũ, hình vẽ vỉa hè minh hoạ. Báo cáo PDF ghi thêm <b>REI tham khảo</b> (EN 13201-2:2015 — từng mép, lấy mép xấu hơn, dải = bề rộng làn, giới hạn bởi vỉa hè) để đối chiếu phần mềm khác; kết luận vẫn theo SR của QCVN. App cảnh báo nếu khoảng cách trụ-mép lớn hơn vỉa hè.</li>
       <li><b>Tư thế lắp đặt</b> (tuỳ chọn): <b>Góc xoay bộ đèn (độ)</b> quanh trục đứng (0 = chiếu vuông góc vào đường), <b>Số bộ đèn/trụ</b>, <b>Hệ số bảo trì MF</b> riêng của tuyến (ghi đè ô MF chung). App tính độ rọi, độ chói, TI, Imax 70/80/90° và ULOR theo đúng tư thế đèn đã nghiêng/xoay như khi lắp thật.</li>
       <li><b>Bố trí "giữa"</b>: trụ đặt trên tim dải phân cách, cần đôi chiếu về hai chiều; điểm sáng vươn ra khỏi mép dải = Độ vươn cần − ½ Độ rộng dải phân cách (chưa ghi bề rộng dải → giả định 2 m).</li>
@@ -281,7 +282,7 @@ body.area .not-area{display:none!important}
       <li>☰ Menu → <b>🔄 Chuyển Excel thô → file dữ liệu (đường)</b> → chọn file tổng hợp (xlsx/xlsm) có các cột cùng tên với file mẫu (tiêu đề ở dòng bất kỳ, được xuống dòng, có chú thích trong ngoặc).</li>
       <li>App tự tìm bảng, chỉ chép <b>thông số đầu vào</b> (thông tin tuyến, cấp đường, độ cao, vươn, góc nghiêng, lòng đường, khoảng cách trụ, bố trí, dải phân cách, số làn…); <b>bỏ qua</b> mọi cột kết quả, yêu cầu QCVN, điểm, xếp hạng, đèn được chọn.</li>
       <li>Nhiều dòng phương án đèn của cùng một tuyến gộp thành <b>1 dòng</b>, để trống bộ đèn (app tự quét thư mục IES); góc nghiêng lấy theo dòng <i>Loại đèn được chọn</i>. Thông số khác nhau giữa các dòng của một tuyến → cảnh báo.</li>
-      <li>File mới <code>WebDialux_DuLieu_…xlsx</code> được tải về và <b>nạp sẵn</b> để chạy. Tuyến thiếu độ cao / lòng đường / khoảng cách trụ: ô tô vàng, xem danh sách cảnh báo dưới trang.</li>
+      <li>File mới <code>WebDialux_DuLieu_…xlsx</code> (cấu trúc bảng tổng hợp, mỗi tuyến 1 dòng) được tải về và <b>nạp sẵn</b> để chạy. Tuyến thiếu độ cao / lòng đường / khoảng cách trụ: ô tô vàng, xem danh sách cảnh báo dưới trang.</li>
     </ul>
 
     <h3>2. Các bước chạy</h3>
@@ -374,7 +375,9 @@ body.area .not-area{display:none!important}
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js"></script>
 <script type="module">
-import { buildIesIndex, runBatch, runBatchRanked, runChunked, pickReportIes } from "./src/batch.mjs";
+import { buildIesIndex, runBatch, runBatchRanked, runChunked, pickReportIes, lampRows } from "./src/batch.mjs";
+import { convertRawSheets } from "./src/rawImport.mjs";
+import { TH_SHEET, addTongHopResultSheet, groupByRoute } from "./src/tonghop.mjs";
 import { COLS, rowToGeometry, matchIES, luminaireLabel } from "./src/mapping.mjs";
 import { calcRoad } from "./src/engine.mjs";
 import { makeIntensity } from "./src/ies.mjs";
@@ -388,6 +391,8 @@ document.getElementById("verMenu").textContent = "WebDialux-CS " + VERSION;
 const $ = (id) => document.getElementById(id);
 const hasFSA = "showOpenFilePicker" in window;
 let xlsxBuf = null, xlsxHandle = null, wb = null, sheetName = null, rows = null, xlsxName = "";
+// file dạng TỔNG HỢP ĐỀ XUẤT: routeRows = 1 object/tuyến (kèm __lamps = các dòng bộ đèn); resRows = các dòng ứng với results[]
+let routeRows = null, resRows = null;
 let iesFiles = [], iesIndex = [], results = null, resultMode = null;
 
 function setStatus(t, bad){ const s=$("status"); s.textContent=t; s.classList.toggle("bad",!!bad); }
@@ -455,7 +460,23 @@ function loadWb(name){
     if (w.SheetNames.includes("VI TRI TRU")) { setMode("area"); AREA.loadWorkbook(w, (name||"").replace(/\.(xlsx|xlsm)$/i,"")); return; }
     if (w.SheetNames.includes("DU LIEU CAU")) { setMode("bridge"); BRIDGE.loadWorkbook(w, (name||"").replace(/\.(xlsx|xlsm)$/i,"")); return; }
     if (areaMode || bridgeMode) setMode("road");
-    xlsxName = name || ""; wb = w;
+    xlsxName = name || ""; wb = w; routeRows = null;
+    // file mới: bỏ kết quả của file cũ (tránh ghép kết quả file A vào dữ liệu file B khi lưu/xuất PDF)
+    if (results) { results = null; resRows = null; $("btnSave").disabled = true; $("btnPdf").disabled = true; $("tbody").innerHTML = ""; $("kpis").hidden = true; $("tablewrap").hidden = true; }
+    // file theo cấu trúc bảng TỔNG HỢP ĐỀ XUẤT (tiêu đề dòng 3, mỗi tuyến nhiều dòng đèn)
+    if (!wb.SheetNames.includes("DU LIEU TUYEN")) {
+      let th = null;
+      try {
+        const sheets = wb.SheetNames.map((n) => ({ name: n, aoa: XLSX.utils.sheet_to_json(wb.Sheets[n], { header: 1, defval: null, raw: true }) }));
+        th = convertRawSheets(sheets, { keepLamps: true });
+      } catch (e) { th = null; }
+      if (th && (th.info.sheet === TH_SHEET || th.info.headerRow > 1)) {
+        sheetName = th.info.sheet; routeRows = rows = th.rows;
+        const nl = rows.reduce((n, r) => n + (r.__lamps || []).length, 0), spec = rows.filter((r) => (r.__lamps || []).length).length;
+        setStatus(`Excel tổng hợp: ${name} · sheet "${sheetName}" · ${rows.length} tuyến (${spec} tuyến chỉ định ${nl} dòng đèn, ${rows.length - spec} tuyến để app tự chọn đèn)${th.info.dropped.length ? ` · bỏ ${th.info.dropped.length} tuyến ghi chú "bỏ ra"` : ""}${th.info.incomplete ? ` · ⚠ ${th.info.incomplete} tuyến thiếu thông số` : ""}. ${iesIndex.length ? "Sẵn sàng chạy." : "Giờ chọn thư mục IES."}`, th.info.incomplete > 0);
+        maybeEnableRun(); return;
+      }
+    }
     sheetName = wb.SheetNames.includes("DU LIEU TUYEN") ? "DU LIEU TUYEN" : wb.SheetNames[0];
     rows = XLSX.utils.sheet_to_json(wb.Sheets[sheetName],{defval:null});
     setStatus(`Excel: ${name} · sheet "${sheetName}" · ${rows.length} dòng. ${iesIndex.length?"Sẵn sàng chạy.":"Giờ chọn thư mục IES."}`);
@@ -514,23 +535,25 @@ $("btnRun").onclick = async () => {
   const q0=parseFloat($("q0").value)||0.08;
   resultMode=$("mode").value;
   const fn = resultMode==="rank" ? runBatchRanked : runBatch;
+  // file tổng hợp + Từng phương án: mỗi dòng đèn của tuyến là 1 phương án (giữ __route để gom lại khi xuất)
+  const runRows = routeRows && resultMode!=="rank" ? routeRows.flatMap((r,k)=>lampRows(r).map((x)=>Object.assign(x===r?{...r}:x,{__route:k}))) : rows;
   const t0=performance.now();
-  setRunning(true, `Đang chạy… 0/${rows.length}`);
-  setStatus(`Đang tính ${rows.length} tuyến…`);
+  setRunning(true, `Đang chạy… 0/${runRows.length}`);
+  setStatus(`Đang tính ${runRows.length} ${runRows===rows?"tuyến":"dòng đèn"}…`);
   let ok=false;
   try{
-    results = await runChunked(fn, rows, iesIndex, {MF,q0}, { chunk: 25, onProgress: (n,t)=>{
+    results = await runChunked(fn, runRows, iesIndex, {MF,q0}, { chunk: 25, onProgress: (n,t)=>{
       $("btnRun").lastChild.textContent=` Đang chạy… ${n}/${t}`;
       setStatus(`Đang tính ${n}/${t} tuyến…`);
     }});
-    ok=true;
+    ok=true; resRows=runRows;
   }catch(e){ setStatus("Lỗi khi chạy: "+e.message,true); }
   finally{ setRunning(false); }
   if(!ok) return;
   const ms=Math.round(performance.now()-t0);
   render();
   const extra = resultMode==="rank" ? ` · ${results.reduce((n,r)=>n+(r.options?r.options.length:0),0)} lượt tính đèn` : "";
-  setStatus(`Đã tính ${results.length} tuyến trong ${ms} ms${extra}.`);
+  setStatus(`Đã tính ${resRows!==rows?`${results.length} dòng đèn của ${rows.length} tuyến`:`${results.length} tuyến`} trong ${ms} ms${extra}.`);
   $("btnSave").disabled=false; $("btnPdf").disabled=false;
 };
 
@@ -634,7 +657,7 @@ function drawRowsRanked(tb){
       const kq = `<span class="pill ${o.pass?"ok":"fail"}">${o.pass?"ĐẠT":"rớt"}</span>`;
       const bad = (v,ok)=>!ok;
       tr.innerHTML=`<td class="t num">${stt}</td><td class="t">${tuyen}</td><td class="num">${cls}</td>`+
-        `<td class="t">${o.model||cleanIes(o.iesName)}</td><td class="t">${o.manufac||""}</td><td class="num">${o.power??""}</td>`+
+        `<td class="t">${o.lampModel||o.model||cleanIes(o.iesName)}</td><td class="t">${o.ncc||o.manufac||""}</td><td class="num">${o.power??""}</td>`+
         cell(fmt(o.Ltb),!o.pass)+cell(fmt(o.Uo))+cell(fmt(o.Ul))+cell(fmt(o.TI,0))+cell(fmt(o.SR))+
         `<td class="num">${o.tong1!=null?o.tong1:"—"}</td>`+
         `<td class="num">${rankCell}</td>`+
@@ -652,11 +675,12 @@ async function saveRanked(){
     try {
       const { buildResultWorkbook } = await import("./src/xlsxpro.mjs");
       const q0sel = parseFloat($("q0").value) || 0.08, MFsel = parseFloat($("mf").value) || 0.8;
-      const wbx = await buildResultWorkbook(window.ExcelJS, { results, rows, q0: q0sel, MF: MFsel, version: VERSION, date: new Date(), projectName: xlsxName.replace(/\.(xlsx|xlsm)$/i, "") });
+      const wbx = await buildResultWorkbook(window.ExcelJS, { results, rows: resRows, q0: q0sel, MF: MFsel, version: VERSION, date: new Date(), projectName: xlsxName.replace(/\.(xlsx|xlsm)$/i, "") });
+      if (routeRows) addTongHopResultSheet(wbx, { results, rows: routeRows });
       const buf = await wbx.xlsx.writeBuffer();
       await saveXlsxBuffer(buf, outName("KetQua_ChamDiem", null, "xlsx"));
       const tong = results.reduce((n, r) => n + ((r.options || []).filter(o => o.pass).length), 0);
-      setStatus(`Đã tạo file kết quả 3 sheet (Chấm điểm chi tiết · Tổng hợp đèn · Theo tuyến) — ${results.length} tuyến, ${tong} dòng đèn Đạt.`);
+      setStatus(`Đã tạo file kết quả ${routeRows?"4 sheet (TONG HOP DE XUAT · ":"3 sheet ("}Chấm điểm chi tiết · Tổng hợp đèn · Theo tuyến) — ${results.length} tuyến, ${tong} dòng đèn Đạt.`);
       return;
     } catch (e) { console.warn("ExcelJS export lỗi, dùng bản dự phòng:", e); }
   }
@@ -732,14 +756,17 @@ $("btnSave").onclick = async () => {
     const q0sel=parseFloat($("q0").value)||0.08, MFsel=parseFloat($("mf").value)||0.8;
     if (window.ExcelJS) {
       const { buildResultWorkbook, toRankedShape } = await import("./src/xlsxpro.mjs");
-      const shaped = toRankedShape(results, rows, iesIndex);
-      const wbx = await buildResultWorkbook(window.ExcelJS, { results: shaped, rows, q0: q0sel, MF: MFsel, version: VERSION, date: new Date(), projectName: xlsxName.replace(/\.(xlsx|xlsm)$/i, "") });
+      const shaped = toRankedShape(results, resRows, iesIndex);
+      const wbx = await buildResultWorkbook(window.ExcelJS, { results: shaped, rows: resRows, q0: q0sel, MF: MFsel, version: VERSION, date: new Date(), projectName: xlsxName.replace(/\.(xlsx|xlsm)$/i, "") });
+      if (routeRows) addTongHopResultSheet(wbx, { results: groupByRoute(results, resRows, routeRows), rows: routeRows });
       await saveXlsxBuffer(await wbx.xlsx.writeBuffer(), outName("KetQua", null, "xlsx"));
       const dat=results.filter(r=>r.status==="ok"&&r.pass).length;
-      setStatus(`Đã tạo file kết quả (3 sheet) — ${results.length} tuyến, ${dat} tuyến ĐẠT. File gốc giữ nguyên.`);
+      setStatus(routeRows ? `Đã tạo file kết quả (4 sheet, đầu tiên là TONG HOP DE XUAT) — ${routeRows.length} tuyến, ${results.length} dòng đèn, ${dat} dòng ĐẠT. File gốc giữ nguyên.`
+        : `Đã tạo file kết quả (3 sheet) — ${results.length} tuyến, ${dat} tuyến ĐẠT. File gốc giữ nguyên.`);
       return;
     }
     // Dự phòng (không tải được ExcelJS): bảng phẳng SheetJS = cột gốc + cột app tính thêm
+    if(routeRows) throw new Error("file tổng hợp cần thư viện ExcelJS (kiểm tra mạng rồi tải lại trang)");
     const ws=wb.Sheets[sheetName]; const ref=XLSX.utils.decode_range(ws["!ref"]);
     const srcHead=[];
     for(let c=ref.s.c;c<=ref.e.c;c++){ const cell=ws[XLSX.utils.encode_cell({r:ref.s.r,c})]; srcHead.push(cell&&cell.v!=null?String(cell.v).trim():""); }
@@ -747,7 +774,7 @@ $("btnSave").onclick = async () => {
     const srcLbl=(cs)=>cs==="loại tuyến"?"quy đổi từ loại tuyến":cs==="hình học"?"tự xác định (hình học)":"nhập trực tiếp";
     const aoa=[[...srcHead,...addHead]];
     results.forEach((r,i)=>{
-      const src=srcHead.map(h=>{ const v=rows[i][h]; return v==null?"":v; });
+      const src=srcHead.map(h=>{ const v=resRows[i][h]; return v==null?"":v; });
       const extra = r.status==="ok"
         ? [ r.roadClass, srcLbl(r.classSource), (r.chon||r.iesName||"").replace(/_IESNA2002\.IES$/i,""), r.power??"",
             +r.Ltb.toFixed(2), +r.Uo.toFixed(2), +r.Ul.toFixed(2), +r.TI.toFixed(0), +r.SR.toFixed(2), +r.En.toFixed(1),
@@ -781,7 +808,12 @@ $("btnPdf").onclick = async () => {
     const q0=parseFloat($("q0").value)||0.08;
     // khớp IES trước để số file (phan k-n) đúng với số tuyến xuất được
     const jobs = idxs.map(i=>{
-      const row=rows[i]; const g=rowToGeometry(row); const res=results[i];
+      const res=results[i], row0=resRows[i];
+      // file tổng hợp: tuyến có nhiều dòng đèn → trang PDF tính theo góc nghiêng của bộ đèn được chọn
+      const g0=rowToGeometry(row0);
+      const pk0 = pickReportIes(res, g0.meta, iesIndex);
+      const opt = pk0 && (res.options||[]).find(o=>o.iesName===pk0.e.name && o.tilt!=null && !o.missing);
+      const row = opt ? {...row0,[COLS.tilt]:opt.tilt} : row0; const g=rowToGeometry(row);
       // bộ đèn: ưu tiên bộ đã chọn/đã tính (ranked: chosen; each: iesName)
       // một nguồn cho cả mục lục + trang PDF: đèn được chọn, hoặc (không đèn nào Đạt) đúng đèn dòng chỉ định
       const pk = pickReportIes(res, g.meta, iesIndex) || (() => { const m = matchIES(g.meta, iesIndex).ies; return m ? { e: m, note: "" } : null; })();
@@ -870,7 +902,7 @@ $("mTemplateBridge").onclick = async () => { $("menu").hidden = true; try{ await
 $("mTemplateArch").onclick = async () => { $("menu").hidden = true; try{ await AREA.downloadTemplate("mythuat"); }catch(e){ setStatus("Lỗi tạo Excel mẫu mỹ thuật: "+e.message,true); } };
 $("mTemplatePark").onclick = async () => { $("menu").hidden = true; try{ await AREA.downloadTemplate("congvien"); }catch(e){ setStatus("Lỗi tạo Excel mẫu công viên: "+e.message,true); } };
 $("mTemplateArea").onclick = async () => { $("menu").hidden = true; try{ await AREA.downloadTemplate(); }catch(e){ setStatus("Lỗi tạo Excel mẫu khu vực: "+e.message,true); } };
-// ---- Chuyển Excel thô → file dữ liệu đúng mẫu DU LIEU TUYEN (chỉ thông số đầu vào, bỏ cột kết quả) ----
+// ---- Chuyển Excel thô → file dữ liệu đúng mẫu TONG HOP DE XUAT (chỉ thông số đầu vào, bỏ cột kết quả) ----
 $("mRaw").onclick = () => {
   $("menu").hidden = true;
   const inp = Object.assign(document.createElement("input"), { type: "file", accept: ".xlsx,.xlsm,.xls" });
@@ -879,12 +911,13 @@ $("mRaw").onclick = () => {
     try {
       setStatus(`Đang đọc ${f.name}…`);
       const { convertRawSheets } = await import("./src/rawImport.mjs");
-      const { buildTemplateWorkbook } = await import("./src/template.mjs");
+      const { buildTongHopWorkbook } = await import("./src/tonghop.mjs");
       if (!window.ExcelJS) throw new Error("chưa tải được thư viện ExcelJS");
       const w = XLSX.read(await f.arrayBuffer(), { type: "array" });
       const sheets = w.SheetNames.map((n) => ({ name: n, aoa: XLSX.utils.sheet_to_json(w.Sheets[n], { header: 1, defval: null, raw: true }) }));
       const out = convertRawSheets(sheets);
-      const buf = await (await buildTemplateWorkbook(window.ExcelJS, { version: VERSION, rows: out.rows })).xlsx.writeBuffer();
+      // file đúng cấu trúc bảng tổng hợp: mỗi tuyến 1 dòng, bỏ trống bộ đèn (app tự chọn từ thư mục IES)
+      const buf = await (await buildTongHopWorkbook(window.ExcelJS, { version: VERSION, rows: out.rows })).xlsx.writeBuffer();
       const base = f.name.replace(/\.(xlsx|xlsm|xls)$/i, ""), name = outName("DuLieu", base, "xlsx");
       await saveXlsxBuffer(buf, name);
       // nạp luôn file vừa tạo để chạy ngay
@@ -903,15 +936,15 @@ $("mRaw").onclick = () => {
 $("mTemplate").onclick = async () => {
   $("menu").hidden = true;
   try{
-    const { buildTemplateWorkbook, TEMPLATE_HEAD } = await import("./src/template.mjs");
+    const { buildTongHopWorkbook, TH_ALL, TH_SHEET } = await import("./src/tonghop.mjs");
     let buf;
-    if (window.ExcelJS) buf = await (await buildTemplateWorkbook(window.ExcelJS, { version: VERSION })).xlsx.writeBuffer();
-    else { // dự phòng không tải được ExcelJS: chỉ dòng tiêu đề, không định dạng
-      const ws=XLSX.utils.aoa_to_sheet([TEMPLATE_HEAD]); ws["!cols"]=TEMPLATE_HEAD.map(h=>({wch:Math.min(Math.max(h.length+2,8),28)}));
-      const wb2=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb2,ws,"DU LIEU TUYEN"); buf=XLSX.write(wb2,{bookType:"xlsx",type:"array"});
+    if (window.ExcelJS) buf = await (await buildTongHopWorkbook(window.ExcelJS, { version: VERSION })).xlsx.writeBuffer();
+    else { // dự phòng không tải được ExcelJS: tiêu đề ở dòng 3 như file tổng hợp, không định dạng
+      const ws=XLSX.utils.aoa_to_sheet([["TỔNG HỢP SỐ LIỆU TUYẾN ĐƯỜNG ĐỂ TÍNH TOÁN VÀ ĐỀ XUẤT ĐÈN LED"],[],TH_ALL,TH_ALL.map((_,i)=>i+1),[]]); ws["!cols"]=TH_ALL.map(()=>({wch:14}));
+      const wb2=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb2,ws,TH_SHEET); buf=XLSX.write(wb2,{bookType:"xlsx",type:"array"});
     }
     const ok=await saveXlsxBuffer(buf,"DATA_MAU_WEBDIALUX.xlsx");
-    if(ok) setStatus("Đã tạo Excel mẫu (DATA_MAU_WEBDIALUX.xlsx): sheet DU LIEU TUYEN để điền, bảng cấp đường QCVN 07-7:2023 và hướng dẫn kèm theo. Xoá 3 dòng mẫu tô vàng rồi nạp lại.");
+    if(ok) setStatus("Đã tạo Excel mẫu (DATA_MAU_WEBDIALUX.xlsx) theo cấu trúc bảng TỔNG HỢP ĐỀ XUẤT: 55 cột gốc + 8 cột bổ sung phía sau, dữ liệu từ dòng 6 (mỗi tuyến 1 dòng, hoặc nhiều dòng nếu chỉ định nhiều bộ đèn). Xoá các dòng mẫu tô vàng rồi nạp lại.");
   }catch(e){ setStatus("Lỗi tạo Excel mẫu: "+e.message,true); }
 };
 // bấm ra ngoài menu (vùng tối trên điện thoại): chỉ đóng menu, không kích hoạt phần tử bên dưới
