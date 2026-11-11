@@ -166,7 +166,7 @@ export async function buildResultWorkbook(ExcelJS, { results, rows = [], q0 = 0.
         F(`IF(${P(n)},"",1+SUMPRODUCT((${rg("AC")}="ĐẠT")*((${rg("U")}<U${n})+${eqU}*(${rg("AI")}>AI${n})+${eqU}*${eqT1}*(${rg("AJ")}>AJ${n})+${eqU}*${eqT1}*(${rg("AJ")}=AJ${n})*(${rg("W")}>W${n})))${tieAbove(n)})`, o.rank),
         F(`IF(AK${n}=1,"✓","")`, o.chosen ? "✓" : ""),
       ] : [null, null, null, null, null, null, null, F(`IF(AC${n}="ĐẠT",1,"")`, o.rank), F(`IF(AC${n}="ĐẠT","✓","")`, o.chosen ? "✓" : "")];
-      const row = ws.addRow([...(k === 0 ? head : blank), o.manufac || "", o.model || cleanIes(o.iesName), o.power ?? null, cleanIes(o.iesName) || o.model || "", // cột V = tên bộ đèn (sheet 3 & 2 tra theo cột này)
+      const row = ws.addRow([...(k === 0 ? head : blank), o.ncc || o.manufac || "", o.lampModel || o.model || cleanIes(o.iesName), o.power ?? null, cleanIes(o.iesName) || o.model || "", // cột V = tên bộ đèn (sheet 3 & 2 tra theo cột này)
         raw(o.Ltb), raw(o.Uo), raw(o.Ul), raw(o.TI), raw(o.SR), raw(o.En), kq, ...score]);
       styleBody(row, zebra); mark(row.getCell(29), o.pass);
       if (o.chosen) { row.eachCell({ includeEmpty: true }, (c) => { c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: C.chosen } }; }); row.getCell(20).font = { bold: true, size: 10 }; row.getCell(38).font = { bold: true, size: 11, color: { argb: C.okTxt } }; row.getCell(38).alignment = { horizontal: "center" }; mark(row.getCell(29), true); }

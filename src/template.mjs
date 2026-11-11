@@ -53,8 +53,8 @@ const GROUPS = [
 ];
 export const TEMPLATE_HEAD = GROUPS.flatMap((g) => g.cols.map((c) => c[0]));
 
-const NUM1 = new Set([COLS.rot, COLS.mf, COLS.H, COLS.vuon, COLS.width, COLS.spacing, COLS.setback, COLS.sidewalk, COLS.medianW, "Chiều dài tuyến (m)"]);
-const NUM0 = new Set([COLS.perPole, COLS.tilt, COLS.lanes, COLS.power, "CCT (K)", "CRI", "SL đèn Sở duyệt (bộ)", "SL đèn trình Sở (bộ)", "STT"]);
+const NUM1 = new Set([COLS.tilt, COLS.rot, COLS.mf, COLS.H, COLS.vuon, COLS.width, COLS.spacing, COLS.setback, COLS.sidewalk, COLS.medianW, "Chiều dài tuyến (m)"]);
+const NUM0 = new Set([COLS.perPole, COLS.lanes, COLS.power, "CCT (K)", "CRI", "SL đèn Sở duyệt (bộ)", "SL đèn trình Sở (bộ)", "STT"]);
 
 const CLASS_DESC = {
   A: "Đường cao tốc đô thị",
@@ -90,7 +90,8 @@ const BORDER = { top: thin, left: thin, bottom: thin, right: thin };
 const fill = (argb) => ({ type: "pattern", pattern: "solid", fgColor: { argb } });
 const MAXROW = 1000;
 
-export async function buildTemplateWorkbook(ExcelJS, { version = VERSION } = {}) {
+/** rows (tuỳ chọn): dữ liệu thật [{tên cột mẫu: giá trị}] thay cho 3 dòng mẫu tô vàng (dùng khi chuyển Excel thô). */
+export async function buildTemplateWorkbook(ExcelJS, { version = VERSION, rows = null } = {}) {
   const wb = new ExcelJS.Workbook();
   wb.creator = `WebDialux-CS ${version}`; wb.created = new Date();
 
@@ -117,7 +118,8 @@ export async function buildTemplateWorkbook(ExcelJS, { version = VERSION } = {})
   const last = c - 1;
   ws.autoFilter = { from: { row: 1, column: 1 }, to: { row: 1, column: last } };
 
-  SAMPLES.forEach((s, i) => {
+  const DATA = rows && rows.length ? rows : SAMPLES, isSample = DATA === SAMPLES;
+  DATA.forEach((s, i) => {
     const row = ws.getRow(i + 2);
     for (const name of TEMPLATE_HEAD) row.getCell(colOf[name]).value = s[name] ?? null;
   });
@@ -130,16 +132,22 @@ export async function buildTemplateWorkbook(ExcelJS, { version = VERSION } = {})
   }
   // căn lề cột ở trên áp cả vào dòng 1 → đặt lại kiểu tiêu đề (xuống dòng, căn giữa)
   ws.getRow(1).eachCell((cell) => { cell.alignment = { horizontal: "center", vertical: "middle", wrapText: true }; cell.numFmt = "@"; });
-  for (let r = 2; r <= SAMPLES.length + 1; r++) {
+  for (let r = 2; r <= DATA.length + 1; r++) {
     const row = ws.getRow(r);
     for (let k = 1; k <= last; k++) {
       const cell = row.getCell(k); cell.border = BORDER;
-      cell.font = { size: 10, italic: true, color: { argb: "FF5B6676" } };
-      cell.fill = fill("FFFFF8E7");          // tô vàng nhạt = dòng mẫu, xoá trước khi dùng
+      if (isSample) {
+        cell.font = { size: 10, italic: true, color: { argb: "FF5B6676" } };
+        cell.fill = fill("FFFFF8E7");          // tô vàng nhạt = dòng mẫu, xoá trước khi dùng
+      } else cell.font = { size: 10 };
     }
+    // dữ liệu chuyển từ Excel thô: ô bắt buộc còn trống → tô vàng để người dùng điền bổ sung
+    const miss = !isSample && DATA[r - 2].__missing;
+    if (miss) for (const name of miss) row.getCell(colOf[name]).fill = fill("FFFFE08A");
   }
   // danh sách chọn + kiểm số
-  const rng = (name) => { const L = ws.getColumn(colOf[name]).letter; return `${L}2:${L}${MAXROW}`; };
+  const maxRow = Math.max(MAXROW, DATA.length + 200);
+  const rng = (name) => { const L = ws.getColumn(colOf[name]).letter; return `${L}2:${L}${maxRow}`; };
   const list = (name, items, title) => ws.dataValidations.add(rng(name), {
     type: "list", allowBlank: true, formulae: [Array.isArray(items) ? `"${items.join(",")}"` : items],
     showErrorMessage: true, errorStyle: "warning", errorTitle: title, error: "Chọn giá trị trong danh sách.",
