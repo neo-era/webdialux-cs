@@ -175,7 +175,7 @@ function rankLamps(row, lamps, base, iesIndex, { MF, rfn, q0 }) {
   let req = null;
   for (const lr of lampRows(row)) {
     const g = rowToGeometry(lr);
-    const lab = { fitting: g.meta.fitting || null, lampModel: g.meta.model || null, ncc: lr[COLS.ncc] ?? null, tilt: g.input.tilt, tiltAuto: g.input.tilt == null, power: g.meta.power };
+    const lab = { fitting: g.meta.fitting || null, lampModel: g.meta.model || null, ncc: lr[COLS.ncc] ?? null, tilt: g.input.tilt, tiltAuto: false, power: g.meta.power };   // tiltAuto chỉ đặt khi đã tính được
     const m = matchIES(g.meta, iesIndex);
     if (!m.ies) { raw.push({ ...lab, iesName: null, model: null, pass: false, missing: `thiếu IES: ${m.reason}` }); continue; }
     try {

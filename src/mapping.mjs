@@ -67,7 +67,11 @@ export function rowToGeometry(row) {
   const spacing = num(row[COLS.spacing]);
   let lanes = num(row[COLS.lanes]);
   // ô trống / không phải số → null = app tự quét 0/5/10/15/20° (tiltSweep.mjs); có số (kể cả 0) → dùng đúng số đó
-  const tilt = num(row[COLS.tilt]);
+  let tilt = num(row[COLS.tilt]);
+  const tiltRaw = row[COLS.tilt];
+  if (tilt != null && typeof tiltRaw === "string" && !/^\s*-?\d+(?:[.,]\d+)?\s*(?:°|độ|do|deg)?\s*$/i.test(tiltRaw))
+    w.push(`ô góc nghiêng "${tiltRaw.trim()}" có ký tự thừa — đọc thành ${tilt}°`);
+  if (tilt != null && Math.abs(tilt) > 90) { w.push(`góc nghiêng ${tilt}° không hợp lệ (> 90°) — app tự quét 0/5/10/15/20°`); tilt = null; }
   if (tilt != null && (tilt < 0 || tilt > 30)) w.push(`góc nghiêng ${tilt}° ngoài khoảng thông dụng 0–30° — vẫn tính theo số đã nhập`);
   const arrangement = (row[COLS.arrangement] || "1 bên").toString().trim();
 

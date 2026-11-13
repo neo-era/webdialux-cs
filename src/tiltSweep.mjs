@@ -36,10 +36,15 @@ export function pickBestTilt(list) {
  * Trả {tilt, r, auto, warn}. Mọi góc đều lỗi → ném lỗi cuối cùng.
  */
 export function calcWithTilt(calc, tilt) {
-  if (tilt != null) return { tilt, r: calc(tilt), auto: false, warn: null };
+  if (tilt != null) return { tilt, r: calc(tilt), auto: false, warn: null, near: false };
   const list = []; let err = null;
-  for (const t of TILT_STEPS) { try { list.push({ tilt: t, r: calc(t) }); } catch (e) { err = e; } }
+  for (const t of TILT_STEPS) {
+    try { const r = calc(t); list.push({ tilt: t, r }); if (r.pass) break; }   // góc tăng dần: góc Đạt đầu tiên là góc được chọn
+    catch (e) { err = e; }
+  }
   const b = pickBestTilt(list);
   if (!b) throw err || new Error("không tính được góc nghiêng nào");
-  return { tilt: b.tilt, r: b.r, auto: true, warn: b.tilt > TILT_WARN ? tiltWarning(b.tilt) : null };
+  const near = !b.r.pass;   // không góc nào Đạt → góc GẦN ĐẠT NHẤT, không phải góc khuyến nghị lắp đặt
+  const warns = [b.tilt > TILT_WARN ? tiltWarning(b.tilt) : null, near ? "không góc nào Đạt — đây là góc gần đạt nhất, không phải góc khuyến nghị lắp đặt" : null].filter(Boolean);
+  return { tilt: b.tilt, r: b.r, auto: true, warn: warns.length ? warns.join("; ") : null, near };
 }

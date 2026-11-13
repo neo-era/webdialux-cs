@@ -56,12 +56,12 @@ test("biên m tính trên số đã làm tròn: TI 10,4 với YC 10 → m = 1 (�
   assert.ok(isFinite(tiltMargin({ ...r, road: { ...r.road, TI: 0 } }).m));
 });
 
-test("calcWithTilt: có số → tính đúng 1 lần; null → thử đủ 5 góc", () => {
+test("calcWithTilt: có số → tính đúng 1 lần; null → thử lần lượt các góc", () => {
   const seen = [];
   const one = calcWithTilt((t) => { seen.push(t); return engine(EASY, t); }, 7);
   assert.deepEqual(seen, [7]); assert.equal(one.tilt, 7); assert.equal(one.auto, false);
   seen.length = 0;
-  const sw = calcWithTilt((t) => { seen.push(t); return engine(EASY, t); }, null);
+  const sw = calcWithTilt((t) => { seen.push(t); return engine(HARD, t); }, null);   // HARD chỉ Đạt ở 20° → thử đủ 5 góc
   assert.deepEqual(seen, TILT_STEPS); assert.equal(sw.auto, true);
   assert.throws(() => calcWithTilt(() => { throw new Error("x"); }, null));
 });
@@ -164,4 +164,31 @@ test("index.html: PDF dùng góc của phương án in ra; chia lô theo số l�
   assert.match(html, /res\.tilt/);
   assert.match(html, /chunkFor\(/);
   assert.match(html, /tự chọn/);
+});
+
+test("v3.7 vòng 2: dòng thiếu IES không tính là tự chọn góc; quét dừng ở góc Đạt đầu tiên; góc > 90° hoặc có chữ thừa → cảnh báo", () => {
+  const R = lampsRoute([{ model: "HELIOS", power: 60, tilt: null }, { model: "CARINA", power: 60, tilt: null }]);
+  const [r] = runBatchRanked([R], idxC);
+  const miss = r.options.find((o) => o.missing);
+  assert.ok(miss); assert.equal(miss.tiltAuto, false);
+  const seen = []; calcWithTilt((t) => { seen.push(t); return engine(EASY, t); }, null);
+  assert.deepEqual(seen, [0], "EASY Đạt ở 0° → không tính thêm");
+  const g = rowToGeometry({ ...EASY, [COLS.tilt]: "1e3" });
+  assert.equal(g.input.tilt, null); assert.ok(g.warnings.some((w) => /không hợp lệ/.test(w)));
+  assert.ok(rowToGeometry({ ...EASY, [COLS.tilt]: "5-10" }).warnings.some((w) => /ký tự thừa/.test(w)));
+  assert.ok(!rowToGeometry({ ...EASY, [COLS.tilt]: "15 độ" }).warnings.some((w) => /ký tự thừa/.test(w)));
+});
+
+test("không góc nào Đạt → ghi rõ 'gần đạt nhất'", () => {
+  const x = calcWithTilt((t) => engine({ ...EASY, [COLS.roadClass]: "A", [COLS.spacing]: 60 }, t), null);
+  assert.equal(x.r.pass, false); assert.equal(x.near, true); assert.match(x.warn, /gần đạt nhất/);
+});
+
+test("sheet tổng hợp: dòng đèn thiếu IES để trống góc thì ô góc vẫn trống (không lấy góc đèn khác)", async () => {
+  const R = lampsRoute([{ model: "CARINA", power: 60, tilt: null }, { model: "HELIOS", power: 60, tilt: null }]);
+  const res = runBatchRanked([R], idxC);
+  const wb = new ExcelJS.Workbook(); addTongHopResultSheet(wb, { results: res, rows: [R] });
+  const ws = wb.getWorksheet(TH_SHEET);
+  const helios = [0, 1].map((k) => ws.getRow(TH_FIRST + k)).find((r) => r.getCell(27).value === "HELIOS");
+  assert.equal(helios.getCell(18).value, null);
 });

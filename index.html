@@ -556,7 +556,7 @@ $("btnRun").onclick = async () => {
   if(!ok) return;
   const ms=Math.round(performance.now()-t0);
   render();
-  const nAuto = results.reduce((n,r)=>n+(r.options?r.options.filter(o=>o.tiltAuto).length:(r.tiltAuto?1:0)),0);
+  const nAuto = results.reduce((n,r)=>n+(r.options?r.options.filter(o=>o.tiltAuto&&o.tilt!=null&&!o.missing).length:(r.tiltAuto?1:0)),0);
   const extra = (resultMode==="rank" ? ` · ${results.reduce((n,r)=>n+(r.options?r.options.length:0),0)} lượt tính đèn` : "") + (nAuto ? ` · ${nAuto} phương án app tự chọn góc nghiêng (ô góc trống)` : "");
   setStatus(`Đã tính ${resRows!==rows?`${results.length} dòng đèn của ${rows.length} tuyến`:`${results.length} tuyến`} trong ${ms} ms${extra}.`);
   $("btnSave").disabled=false; $("btnPdf").disabled=false;

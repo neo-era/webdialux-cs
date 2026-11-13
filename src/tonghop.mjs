@@ -194,7 +194,7 @@ export function addTongHopResultSheet(wb, { results, rows = [] }) {
     opts.forEach((x, k) => {
       const cells = head(k === 0);
       cells[LAMP.fit] = x.fitting || label(x); cells[LAMP.model] = label(x); cells[LAMP.ncc] = x.ncc || x.manufac || null; cells[LAMP.power] = x.power ?? null;
-      cells[LAMP.tilt] = x.tilt ?? g.tilt ?? null;
+      cells[LAMP.tilt] = x.missing ? (x.tilt ?? null) : (x.tilt ?? g.tilt ?? null);   // dòng thiếu IES: giữ đúng ô góc đã nhập (trống thì trống)
       if (x.missing) { cells[COL.pass] = x.missing; lines.push({ cells, first: k === 0, bad: true }); return; }
       [r2(x.Ltb), r2(x.Uo), r2(x.Ul), r0(x.TI), r2(x.SR)].forEach((v, j) => { cells[COL.kq + j] = v; });
       cells[COL.En] = r1(x.En); cells[COL.pass] = !!x.pass;
