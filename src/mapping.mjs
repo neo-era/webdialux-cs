@@ -66,7 +66,13 @@ export function rowToGeometry(row) {
   const width = num(row[COLS.width]);
   const spacing = num(row[COLS.spacing]);
   let lanes = num(row[COLS.lanes]);
-  const tilt = num(row[COLS.tilt]) ?? 0;
+  // ô trống / không phải số → null = app tự quét 0/5/10/15/20° (tiltSweep.mjs); có số (kể cả 0) → dùng đúng số đó
+  let tilt = num(row[COLS.tilt]);
+  const tiltRaw = row[COLS.tilt];
+  if (tilt != null && typeof tiltRaw === "string" && !/^\s*-?\d+(?:[.,]\d+)?\s*(?:°|độ|do|deg)?\s*$/i.test(tiltRaw))
+    w.push(`ô góc nghiêng "${tiltRaw.trim()}" có ký tự thừa — đọc thành ${tilt}°`);
+  if (tilt != null && Math.abs(tilt) > 90) { w.push(`góc nghiêng ${tilt}° không hợp lệ (> 90°) — app tự quét 0/5/10/15/20°`); tilt = null; }
+  if (tilt != null && (tilt < 0 || tilt > 30)) w.push(`góc nghiêng ${tilt}° ngoài khoảng thông dụng 0–30° — vẫn tính theo số đã nhập`);
   const arrangement = (row[COLS.arrangement] || "1 bên").toString().trim();
 
   if (H == null) w.push("thiếu Độ cao H");
@@ -117,7 +123,7 @@ export function rowToGeometry(row) {
     input: { H, overhang, spacing, width, lanes, tilt, arrangement, roadClass, vuon, setback, sidewalk, median: median || center, medianW, rot, perPole, MF },
     warnings: w, autoClass, classSource,
     meta: {
-      stt: row[COLS.stt], tuyen: row[COLS.tuyen],
+      stt: row[COLS.stt], tuyen: row[COLS.tuyen], tiltAuto: tilt == null,
       model: (row[COLS.model] || "").toString().trim(),
       fitting: (row[COLS.fitting] || "").toString().trim(),
       power: num(row[COLS.power]), ncc: row[COLS.ncc], autoClass, classSource,

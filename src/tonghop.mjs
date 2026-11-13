@@ -158,6 +158,7 @@ function guide(wb) {
     ["• Dữ liệu từ dòng 6. Mỗi tuyến: dòng đầu ghi STT + số lượng đèn; các dòng tiếp theo (không ghi STT) là các bộ đèn khác của cùng tuyến."],
     ["• Bỏ trống Fitting / Loại đèn → app tự quét toàn bộ thư mục IES, chấm điểm và chọn bộ đèn tối ưu. Ghi Loại đèn + Công suất → app tính đúng các bộ đèn đó, mỗi dòng dùng góc nghiêng của dòng."],
     ["• Cột 31–55 (QCVN, kết quả, điểm, xếp hạng, đèn được chọn) do app điền vào file kết quả — không cần nhập."],
+    ["• Góc nghiêng bộ đèn (cột 18): để trống → app thử 0/5/10/15/20° cho từng bộ đèn, chọn góc nhỏ nhất Đạt (ghi chú \"App tự chọn\" ở file kết quả). Ghi số → dùng đúng số đó. Muốn app quét lại thì xoá ô góc."],
     ["• Cột 56–63 (Loại tuyến, vỉa hè, dải phân cách, góc xoay, số đèn/trụ, MF, CCT, CRI) là thông số bổ sung, tuỳ chọn."],
     ["• Ghi chú \"bỏ ra\" ở cột ghi chú (sau cột 63) → tuyến không được đưa vào tính."],
     ["• Bắt buộc: Tuyến đường, Độ cao bộ đèn, Độ rộng lòng đường, Khoảng cách trụ trung bình. Cấp đường trống → app tự xác định theo hình học / loại tuyến."]]
@@ -193,7 +194,7 @@ export function addTongHopResultSheet(wb, { results, rows = [] }) {
     opts.forEach((x, k) => {
       const cells = head(k === 0);
       cells[LAMP.fit] = x.fitting || label(x); cells[LAMP.model] = label(x); cells[LAMP.ncc] = x.ncc || x.manufac || null; cells[LAMP.power] = x.power ?? null;
-      cells[LAMP.tilt] = x.tilt ?? g.tilt ?? null;
+      cells[LAMP.tilt] = x.missing ? (x.tilt ?? null) : (x.tilt ?? g.tilt ?? null);   // dòng thiếu IES: giữ đúng ô góc đã nhập (trống thì trống)
       if (x.missing) { cells[COL.pass] = x.missing; lines.push({ cells, first: k === 0, bad: true }); return; }
       [r2(x.Ltb), r2(x.Uo), r2(x.Ul), r0(x.TI), r2(x.SR)].forEach((v, j) => { cells[COL.kq + j] = v; });
       cells[COL.En] = r1(x.En); cells[COL.pass] = !!x.pass;
@@ -205,7 +206,7 @@ export function addTongHopResultSheet(wb, { results, rows = [] }) {
         cells[COL.chModel] = label(ch); cells[COL.chNcc] = ch.ncc || ch.manufac || null;
       }
       const note = x.specPower != null && x.power != null && x.specPower !== x.power ? `Dòng ghi ${x.specPower} W — thư mục IES không có, tính bằng ${luminaireLabel(x.iesName)} (${x.power} W).` : null;
-      lines.push({ cells, first: k === 0, pass: !!x.pass, chosen: ch === x, note, fb: k === 0 ? r.fallback : null });
+      lines.push({ cells, first: k === 0, pass: !!x.pass, chosen: ch === x, note, fb: k === 0 ? r.fallback : null, tiltNote: x.tiltAuto ? `App tự chọn góc ${x.tilt}° (thử 0/5/10/15/20°)${x.tiltWarn ? " — ⚠ " + x.tiltWarn : ""}` : null });
     });
   });
   const last = TH_FIRST + Math.max(lines.length, 1) - 1;
@@ -216,6 +217,7 @@ export function addTongHopResultSheet(wb, { results, rows = [] }) {
     if (typeof kq.value === "boolean") { kq.fill = fill(kq.value ? C.okBg : C.badBg); kq.font = { bold: true, color: { argb: kq.value ? C.ok : C.bad } }; kq.alignment = { horizontal: "center", vertical: "middle" }; }
     else if (ln.bad) kq.font = { italic: true, color: { argb: C.bad } };
     if (ln.chosen) for (let k = 26; k <= 50; k++) row.getCell(k).fill = fill(C.chosen);
+    if (ln.tiltNote) { const c = row.getCell(LAMP.tilt); c.note = ln.tiltNote; c.font = { italic: true, size: 11, color: { argb: "FF1F6FB2" } }; }
     if (ln.fb) { const c = row.getCell(LAMP.model); c.note = ln.fb; }
     if (ln.note) { const c = row.getCell(LAMP.power); c.note = ln.note; c.font = { bold: true, color: { argb: "FFC65911" } }; }
     for (let k = COL.req; k <= COL.tong2; k++) row.getCell(k).alignment = { horizontal: "center", vertical: "middle" };
@@ -237,7 +239,7 @@ export function groupByRoute(results, flatRows, routes) {
     const fr = flatRows[i] || {}, k = fr.__route ?? i;
     if (out[k] == null) out[k] = { ...r, options: [], chosen: null, raw: [] };
     const g = out[k];
-    const lab = { fitting: fr[COLS.fitting] ?? null, lampModel: fr[COLS.model] ?? null, ncc: fr[COLS.ncc] ?? null, tilt: fr[COLS.tilt] ?? null };
+    const lab = { fitting: fr[COLS.fitting] ?? null, lampModel: fr[COLS.model] ?? null, ncc: fr[COLS.ncc] ?? null, tilt: r.tilt ?? fr[COLS.tilt] ?? null, tiltAuto: !!r.tiltAuto, tiltWarn: r.tiltWarn || null };
     if (r.status === "ok") {
       g.status = "ok"; g.req = r.req || g.req; g.roadClass = r.roadClass ?? g.roadClass;
       g.raw.push({ ...lab, iesName: r.iesName, model: r.model, power: r.power, Ltb: r.Ltb, Uo: r.Uo, Ul: r.Ul, TI: r.TI, SR: r.SR, En: r.En, pass: !!r.pass });

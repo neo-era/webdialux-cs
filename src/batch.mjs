@@ -3,6 +3,13 @@ import { parseIES } from "./ies.mjs";
 import { calcRoad } from "./engine.mjs";
 import { rowToGeometry, matchIES, modelKeyword, powerFromName, COLS } from "./mapping.mjs";
 import { scoreOptions } from "./scoring.mjs";
+import { calcWithTilt } from "./tiltSweep.mjs";
+
+/** Tính 1 bộ đèn; góc nghiêng null → quét 0/5/10/15/20° (tiltSweep). Trả {r, tilt, tiltAuto, tiltWarn}. */
+function calcBest(ies, input, { MF, q0, rfn }) {
+  const x = calcWithTilt((tilt) => calcRoad({ ies: ies.ph, ...input, tilt, MF: input.MF ?? MF, ...(q0 ? { q0 } : {}), ...(rfn ? { rfn } : {}) }), input.tilt ?? null);
+  return { r: x.r, tilt: x.tilt, tiltAuto: x.auto, tiltWarn: x.warn };
+}
 
 /** files: [{name, text}] -> chỉ mục [{name, model, power, manufac, ph}] */
 export function buildIesIndex(files) {
@@ -36,9 +43,9 @@ export function selectLowestPassing(geomInput, iesIndex, { MF = 0.8, rfn, q0 = n
   let fallback = null;
   for (const c of cands) {
     try {
-      const r = calcRoad({ ies: c.ph, ...geomInput, MF: geomInput.MF ?? MF, ...(q0 ? { q0 } : {}), ...(rfn ? { rfn } : {}) });
-      fallback = { ies: c, r, pass: r.pass }; // đèn công suất lớn nhất đã thử
-      if (r.pass) return { ies: c, r, pass: true };
+      const x = calcBest(c, geomInput, { MF, q0, rfn });
+      fallback = { ies: c, ...x, pass: x.r.pass }; // đèn công suất lớn nhất đã thử
+      if (x.r.pass) return { ies: c, ...x, pass: true };
     } catch (_) { /* bỏ ứng viên lỗi */ }
   }
   return fallback; // không đèn nào Đạt -> đèn lớn nhất (pass=false)
@@ -69,8 +76,7 @@ export function runBatch(rows, iesIndex, opts = {}) {
       const m = matchIES(g.meta, iesIndex);
       if (!m.ies) return { ...base, status: "thiếu IES", reason: m.reason, autoSelect: false };
       try {
-        const r = calcRoad({ ies: m.ies.ph, ...g.input, MF: g.input.MF ?? MF, ...(q0 ? { q0 } : {}), ...(rfn ? { rfn } : {}) });
-        chosen = { ies: m.ies, r }; note = m.reason;
+        chosen = { ies: m.ies, ...calcBest(m.ies, g.input, { MF, q0, rfn }) }; note = m.reason;
       } catch (e) {
         return { ...base, status: "lỗi tính", reason: String(e.message || e) };
       }
@@ -81,7 +87,7 @@ export function runBatch(rows, iesIndex, opts = {}) {
     const sel = selectLowestPassing(g.input, iesIndex, { MF, rfn, q0 });
     if (!sel) return { ...base, status: "thiếu IES", reason: "thư viện IES trống", autoSelect: true };
     note = sel.pass ? "tự chọn: công suất nhỏ nhất vẫn Đạt" : "tự chọn: không đèn nào Đạt — lấy công suất lớn nhất";
-    return emit(base, { ies: sel.ies, r: sel.r }, { autoSelect: true, note });
+    return emit(base, sel, { autoSelect: true, note });
   });
 }
 
@@ -93,6 +99,8 @@ function emit(base, chosen, { autoSelect, note }) {
     chon: chosen.ies.name, power: chosen.ies.power ?? base.power,
     Ltb: r.road.Lav, Uo: r.road.Uo, Ul: r.road.Ul, TI: r.road.TI, SR: r.road.SR,
     En: r.E.avg, pass: r.pass, checks: r.checks, req: r.req, roadClass: r.roadClass,
+    tilt: chosen.tilt, tiltAuto: !!chosen.tiltAuto, tiltWarn: chosen.tiltWarn || null,
+    input: base.input ? { ...base.input, tilt: chosen.tilt } : undefined,
   };
 }
 
@@ -128,10 +136,10 @@ export function runBatchRanked(rows, iesIndex, opts = {}) {
     let req = null;
     for (const c of pool) {
       try {
-        const r = calcRoad({ ies: c.ph, ...g.input, MF: g.input.MF ?? MF, ...(q0 ? { q0 } : {}), ...(rfn ? { rfn } : {}) });
+        const { r, tilt, tiltAuto, tiltWarn } = calcBest(c, g.input, { MF, q0, rfn });
         req = r.req;
         raw.push({
-          iesName: c.name, model: c.model, manufac: c.manufac, power: c.power,
+          iesName: c.name, model: c.model, manufac: c.manufac, power: c.power, tilt, tiltAuto, tiltWarn,
           Ltb: r.road.Lav, Uo: r.road.Uo, Ul: r.road.Ul, TI: r.road.TI, SR: r.road.SR,
           En: r.E.avg, pass: r.pass,
         });
@@ -147,7 +155,8 @@ export function runBatchRanked(rows, iesIndex, opts = {}) {
       });
     const chosen = options.find((o) => o.chosen) || null;
     const anyPass = options.some((o) => o.pass);
-    return { ...base, status: "ok", req, options, chosen, pass: anyPass };
+    const input = chosen ? { ...base.input, tilt: chosen.tilt } : base.input;   // góc của bộ đèn được chọn
+    return { ...base, input, status: "ok", req, options, chosen, pass: anyPass };
   });
 }
 
@@ -157,7 +166,7 @@ export function lampRows(row) {
   if (!lamps.length) return [row];
   return lamps.map((l) => ({
     ...row, [COLS.fitting]: l.fitting ?? null, [COLS.model]: l.model ?? null, [COLS.ncc]: l.ncc ?? null,
-    [COLS.power]: l.power ?? null, [COLS.tilt]: l.tilt ?? row[COLS.tilt] ?? null,
+    [COLS.power]: l.power ?? null, [COLS.tilt]: l.tilt ?? null,   // dòng trống góc → quét, KHÔNG mượn góc dòng khác
   }));
 }
 
@@ -166,21 +175,21 @@ function rankLamps(row, lamps, base, iesIndex, { MF, rfn, q0 }) {
   let req = null;
   for (const lr of lampRows(row)) {
     const g = rowToGeometry(lr);
-    const lab = { fitting: g.meta.fitting || null, lampModel: g.meta.model || null, ncc: lr[COLS.ncc] ?? null, tilt: g.input.tilt, power: g.meta.power };
+    const lab = { fitting: g.meta.fitting || null, lampModel: g.meta.model || null, ncc: lr[COLS.ncc] ?? null, tilt: g.input.tilt, tiltAuto: false, power: g.meta.power };   // tiltAuto chỉ đặt khi đã tính được
     const m = matchIES(g.meta, iesIndex);
     if (!m.ies) { raw.push({ ...lab, iesName: null, model: null, pass: false, missing: `thiếu IES: ${m.reason}` }); continue; }
     try {
-      const r = calcRoad({ ies: m.ies.ph, ...g.input, MF: g.input.MF ?? MF, ...(q0 ? { q0 } : {}), ...(rfn ? { rfn } : {}) });
+      const { r, tilt, tiltAuto, tiltWarn } = calcBest(m.ies, g.input, { MF, q0, rfn });
       req = r.req;
       raw.push({
-        ...lab, iesName: m.ies.name, iesNote: m.reason, model: m.ies.model, manufac: m.ies.manufac, power: m.ies.power ?? g.meta.power, specPower: g.meta.power,
+        ...lab, tilt, tiltAuto, tiltWarn, iesName: m.ies.name, iesNote: m.reason, model: m.ies.model, manufac: m.ies.manufac, power: m.ies.power ?? g.meta.power, specPower: g.meta.power,
         Ltb: r.road.Lav, Uo: r.road.Uo, Ul: r.road.Ul, TI: r.road.TI, SR: r.road.SR, En: r.E.avg, pass: r.pass,
       });
     } catch (e) { raw.push({ ...lab, iesName: m.ies.name, model: m.ies.model, pass: false, missing: `lỗi tính: ${e.message || e}` }); }
   }
   if (!raw.some((x) => !x.missing)) {
     // không bộ đèn chỉ định nào có IES trong thư mục → quét toàn bộ thư mục như tuyến để trống bộ đèn, ghi rõ lý do
-    const plain = { ...row }; for (const k of [COLS.model, COLS.fitting, COLS.power, COLS.ncc]) delete plain[k];
+    const plain = { ...row }; for (const k of [COLS.model, COLS.fitting, COLS.power, COLS.ncc, COLS.tilt]) delete plain[k];   // quét cả thư viện lẫn góc
     const r = runBatchRanked([plain], iesIndex, { MF, rfn, q0 })[0];
     const why = `bộ đèn chỉ định không có IES (${raw.map((x) => x.lampModel || x.fitting).join(", ")}) — app quét toàn bộ thư mục IES`;
     return { ...r, warnings: [...(r.warnings || []), why], specified: false, fallback: why };
@@ -214,7 +223,7 @@ export function autoFind(rows, iesIndex, opts = {}) {
     if (!sel) return { stt: rd.stt, tuyen: rd.tuyen, status: "không có đèn Đạt" };
     const r = sel.r;
     return {
-      stt: rd.stt, tuyen: rd.tuyen, status: "ok", chon: sel.ies.name, power: sel.ies.power,
+      stt: rd.stt, tuyen: rd.tuyen, status: "ok", chon: sel.ies.name, power: sel.ies.power, tilt: sel.tilt, tiltAuto: sel.tiltAuto,
       roadClass: g.input.roadClass, autoClass: g.autoClass,
       Ltb: r.road.Lav, Uo: r.road.Uo, Ul: r.road.Ul, TI: r.road.TI, SR: r.road.SR, pass: r.pass,
     };

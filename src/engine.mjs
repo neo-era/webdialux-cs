@@ -26,6 +26,8 @@ function avgE(points, lums, I, MF) {
 
 export function calcRoad(input) {
   if (!(input.spacing > 0) || !Number.isFinite(input.spacing)) throw new Error("Khoảng cột phải là số dương");
+  // null = chưa chọn góc (nơi gọi phải quét/điền số) — không lặng lẽ coi là 0°
+  if (input.tilt === null || (input.tilt !== undefined && !Number.isFinite(input.tilt))) throw new Error("Góc nghiêng chưa xác định (phải là số)");
   const {
     ies, H, overhang, spacing, width, lanes = 2, arrangement = "1 bên",
     tilt = 0, MF = 0.8, roadClass = "D1", spanWindow = 5,
