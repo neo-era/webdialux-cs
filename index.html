@@ -80,6 +80,8 @@ tr:last-child td{border-bottom:none}
 .pill.ok{background:var(--ok-bg);color:var(--ok)} .pill.fail{background:var(--fail-bg);color:var(--fail)}
 .pill.na{background:var(--warn-bg);color:var(--warn)}
 .auto{color:var(--accent);font-weight:700;margin-left:3px;cursor:help}
+.tilt{color:var(--muted);font-size:.85em;white-space:nowrap;cursor:help}
+.tilt.warn{color:var(--warn,#b45309)}
 .legend{font-size:12px;color:var(--muted);margin:8px 2px 0}
 tr.chosen td{background:var(--ok-bg)}
 tr.chosen td.t:first-child,tr.chosen td{font-weight:500}
@@ -259,6 +261,7 @@ body.area .not-area{display:none!important}
     <h3>1. Chuẩn bị dữ liệu</h3>
     <ul>
       <li><b>File Excel mẫu (đường)</b> theo cấu trúc bảng <b>TỔNG HỢP ĐỀ XUẤT ĐÈN LED</b> (sheet <code>TONG HOP DE XUAT</code>): dòng 1 tiêu đề, dòng 2 nhóm cột, <b>dòng 3 tên cột</b> (55 cột gốc + 8 cột bổ sung phía sau: Loại tuyến, vỉa hè, dải phân cách, góc xoay, số đèn/trụ, MF, CCT, CRI), dữ liệu từ dòng 6. Mỗi tuyến <b>1 dòng</b> (bỏ trống Fitting/Loại đèn → app tự quét thư mục IES, chấm điểm, chọn đèn) hoặc <b>nhiều dòng</b> (mỗi dòng 1 bộ đèn chỉ định, góc nghiêng riêng; STT chỉ ghi ở dòng đầu). Cột 31–55 (QCVN, kết quả, điểm, xếp hạng, đèn được chọn) app tự điền vào file kết quả — sheet <code>TONG HOP DE XUAT</code> đứng đầu, giữ nguyên các sheet kết quả cũ. File tổng hợp có sẵn của phòng (cùng tên cột) mở thẳng được.</li>
+      <li><b>Góc nghiêng bộ đèn</b>: ô <b>để trống</b> → app thử <b>0, 5, 10, 15, 20°</b> cho từng bộ đèn và chọn <b>góc nhỏ nhất Đạt</b> (không góc nào Đạt → góc ít chỉ tiêu rớt nhất); kết quả ghi "· 10° (tự chọn)", góc 20° kèm cảnh báo chói/ánh sáng hắt lên trời. Ô <b>có số</b> (kể cả 0) → dùng đúng số đó. File cũ trước đây để trống góc được tính 0°, nay sẽ được quét.</li>
       <li><b>File Excel cũ</b> (sheet <code>DU LIEU TUYEN</code>) vẫn đọc được: mỗi dòng là một tuyến/phương án. Cột hình học bắt buộc: Độ cao bộ đèn (m), Độ vươn cần đèn (m), Khoảng cách trụ đến mép đường (m), Độ rộng lòng đường (m), Khoảng cách trụ TB (m), Số làn xe, Góc nghiêng bộ đèn (độ), Cách bố trí trụ, Dải phân cách giữa.</li>
       <li><b>Độ rộng vỉa hè (m)</b> (tuỳ chọn): giới hạn dải tính SR = min(5 m, ½ lòng đường, vỉa hè) và được vẽ trong phối cảnh 3D, mặt bằng; trụ đứng trên vỉa hè. Để trống: SR như cũ, hình vẽ vỉa hè minh hoạ. Báo cáo PDF ghi thêm <b>REI tham khảo</b> (EN 13201-2:2015 — từng mép, lấy mép xấu hơn, dải = bề rộng làn, giới hạn bởi vỉa hè) để đối chiếu phần mềm khác; kết luận vẫn theo SR của QCVN. App cảnh báo nếu khoảng cách trụ-mép lớn hơn vỉa hè.</li>
       <li><b>Tư thế lắp đặt</b> (tuỳ chọn): <b>Góc xoay bộ đèn (độ)</b> quanh trục đứng (0 = chiếu vuông góc vào đường), <b>Số bộ đèn/trụ</b>, <b>Hệ số bảo trì MF</b> riêng của tuyến (ghi đè ô MF chung). App tính độ rọi, độ chói, TI, Imax 70/80/90° và ULOR theo đúng tư thế đèn đã nghiêng/xoay như khi lắp thật.</li>
@@ -378,6 +381,7 @@ body.area .not-area{display:none!important}
 import { buildIesIndex, runBatch, runBatchRanked, runChunked, pickReportIes, lampRows } from "./src/batch.mjs";
 import { convertRawSheets } from "./src/rawImport.mjs";
 import { TH_SHEET, addTongHopResultSheet, groupByRoute } from "./src/tonghop.mjs";
+import { calcWithTilt } from "./src/tiltSweep.mjs";
 import { COLS, rowToGeometry, matchIES, luminaireLabel } from "./src/mapping.mjs";
 import { calcRoad } from "./src/engine.mjs";
 import { makeIntensity } from "./src/ies.mjs";
@@ -542,7 +546,7 @@ $("btnRun").onclick = async () => {
   setStatus(`Đang tính ${runRows.length} ${runRows===rows?"tuyến":"dòng đèn"}…`);
   let ok=false;
   try{
-    results = await runChunked(fn, runRows, iesIndex, {MF,q0}, { chunk: 25, onProgress: (n,t)=>{
+    results = await runChunked(fn, runRows, iesIndex, {MF,q0}, { chunk: chunkFor(resultMode==="rank", iesIndex.length), onProgress: (n,t)=>{
       $("btnRun").lastChild.textContent=` Đang chạy… ${n}/${t}`;
       setStatus(`Đang tính ${n}/${t} tuyến…`);
     }});
@@ -552,7 +556,8 @@ $("btnRun").onclick = async () => {
   if(!ok) return;
   const ms=Math.round(performance.now()-t0);
   render();
-  const extra = resultMode==="rank" ? ` · ${results.reduce((n,r)=>n+(r.options?r.options.length:0),0)} lượt tính đèn` : "";
+  const nAuto = results.reduce((n,r)=>n+(r.options?r.options.filter(o=>o.tiltAuto).length:(r.tiltAuto?1:0)),0);
+  const extra = (resultMode==="rank" ? ` · ${results.reduce((n,r)=>n+(r.options?r.options.length:0),0)} lượt tính đèn` : "") + (nAuto ? ` · ${nAuto} phương án app tự chọn góc nghiêng (ô góc trống)` : "");
   setStatus(`Đã tính ${resRows!==rows?`${results.length} dòng đèn của ${rows.length} tuyến`:`${results.length} tuyến`} trong ${ms} ms${extra}.`);
   $("btnSave").disabled=false; $("btnPdf").disabled=false;
 };
@@ -584,8 +589,12 @@ function matchFilter(r){
 }
 function visibleIndices(){ const out=[]; results.forEach((r,i)=>{ if(matchFilter(r)) out.push(i); }); return out; }
 
+// mỗi lô chạy ≈ 150 lượt tính (ô góc trống → mỗi đèn 5 góc) để giao diện không đứng lâu
+function chunkFor(ranked, nIes){ const per = (ranked ? Math.max(1,nIes) : Math.min(Math.max(1,nIes),4)) * 5; return Math.max(1, Math.floor(150/per)); }
 const cleanIes = (s)=>String(s||"").replace(/_IESNA2002\.IES$/i,"").replace(/\.ies$/i,"");
 const cell=(v,bad)=>`<td class="num${bad?" bad":""}">${v}</td>`;
+// góc nghiêng app tự chọn (ô trống → thử 0/5/10/15/20°): ghi kèm sau tên đèn
+const tiltTag=(x)=>x&&x.tiltAuto&&x.tilt!=null?` <span class="tilt${x.tiltWarn?" warn":""}" title="${x.tiltWarn?"⚠ "+x.tiltWarn:"Ô góc nghiêng để trống — app thử 0/5/10/15/20°, chọn góc nhỏ nhất Đạt"}">· ${x.tilt}° (tự chọn)${x.tiltWarn?" ⚠":""}</span>`:"";
 const autoMark=(txt,on,tip)=>on?`${txt}<span class="auto" title="${tip}">•</span>`:(txt||"");
 
 // Gắn khoá cột (data-k) + nhãn (data-l) cho từng ô — điện thoại dùng để hiện mỗi dòng thành một thẻ
@@ -614,7 +623,7 @@ function drawRows(){
     const tr=document.createElement("tr");
     tr.innerHTML=`<td class="t num">${r.stt??""}</td><td class="t">${r.tuyen??""}</td>`+
       `<td class="num">${autoMark(r.roadClass||"",r.autoClass,clsTip)}</td>`+
-      `<td class="t">${r.model||""}</td><td class="t">${r.manufac||""}</td><td class="num">${r.power??""}</td>`+
+      `<td class="t">${r.model||(r.status==="ok"?cleanIes(r.iesName):"")}${tiltTag(r)}</td><td class="t">${r.manufac||""}</td><td class="num">${r.power??""}</td>`+
       (r.status==="ok"?
         cell(fmt(r.Ltb))+cell(fmt(r.Uo))+cell(fmt(r.Ul))+cell(fmt(r.TI,0))+cell(fmt(r.SR))+`<td></td><td></td>`:
         `<td colspan="7" class="t" style="color:var(--muted)">${r.reason||""}</td>`)+
@@ -657,7 +666,7 @@ function drawRowsRanked(tb){
       const kq = `<span class="pill ${o.pass?"ok":"fail"}">${o.pass?"ĐẠT":"rớt"}</span>`;
       const bad = (v,ok)=>!ok;
       tr.innerHTML=`<td class="t num">${stt}</td><td class="t">${tuyen}</td><td class="num">${cls}</td>`+
-        `<td class="t">${o.lampModel||o.model||cleanIes(o.iesName)}</td><td class="t">${o.ncc||o.manufac||""}</td><td class="num">${o.power??""}</td>`+
+        `<td class="t">${o.lampModel||o.model||cleanIes(o.iesName)}${tiltTag(o)}</td><td class="t">${o.ncc||o.manufac||""}</td><td class="num">${o.power??""}</td>`+
         cell(fmt(o.Ltb),!o.pass)+cell(fmt(o.Uo))+cell(fmt(o.Ul))+cell(fmt(o.TI,0))+cell(fmt(o.SR))+
         `<td class="num">${o.tong1!=null?o.tong1:"—"}</td>`+
         `<td class="num">${rankCell}</td>`+
@@ -813,11 +822,14 @@ $("btnPdf").onclick = async () => {
       const g0=rowToGeometry(row0);
       const pk0 = pickReportIes(res, g0.meta, iesIndex);
       const opt = pk0 && (res.options||[]).find(o=>o.iesName===pk0.e.name && o.tilt!=null && !o.missing);
-      const row = opt ? {...row0,[COLS.tilt]:opt.tilt} : row0; const g=rowToGeometry(row);
+      // góc của phương án in ra: Đa phương án → options; Từng phương án → res.tilt (đã quét nếu ô trống)
+      const used = opt || (res && res.tilt!=null && (!pk0 || res.iesName===pk0.e.name) ? res : null);
+      const row = used ? {...row0,[COLS.tilt]:used.tilt} : row0; const g=rowToGeometry(row);
+      const tiltNote = used && used.tiltAuto ? `góc nghiêng ${used.tilt}° do app tự chọn (thử 0/5/10/15/20°)${used.tiltWarn?" — ⚠ "+used.tiltWarn:""}` : "";
       // bộ đèn: ưu tiên bộ đã chọn/đã tính (ranked: chosen; each: iesName)
       // một nguồn cho cả mục lục + trang PDF: đèn được chọn, hoặc (không đèn nào Đạt) đúng đèn dòng chỉ định
       const pk = pickReportIes(res, g.meta, iesIndex) || (() => { const m = matchIES(g.meta, iesIndex).ies; return m ? { e: m, note: "" } : null; })();
-      return pk ? {i,row,g,res,e:pk.e,note:pk.note} : null;
+      return pk ? {i,row,g,res,e:pk.e,note:[pk.note,tiltNote].filter(Boolean).join(" · ")} : null;
     }).filter(Boolean);
     if(jobs.length===0){ setStatus("Không tạo được trang PDF nào (thiếu IES khớp).",true); return; }
     const { made, parts } = await buildPdfParts({
@@ -825,7 +837,12 @@ $("btnPdf").onclick = async () => {
       prepare: (j)=>{
         // cấp đường: dùng cấp đã xác định ở bước tính (có thể là cấp tự phân)
         const input={...j.g.input, roadClass: (j.res&&j.res.roadClass)||j.g.input.roadClass, MF: j.g.input.MF ?? MF, q0, detail:true};
-        try{ return {...j, input, result: calcRoad({ies:j.e.ph, ...input})}; }catch(_){ return null; }
+        try{
+          // ô góc trống mà không có góc của phương án (vd đèn khác đèn đã tính) → quét như lúc chạy
+          const x = calcWithTilt((tilt)=>calcRoad({ies:j.e.ph, ...input, tilt}), input.tilt ?? null);
+          const note = x.auto && !/tự chọn/.test(j.note||"") ? [j.note, `góc nghiêng ${x.tilt}° do app tự chọn${x.warn?" — ⚠ "+x.warn:""}`].filter(Boolean).join(" · ") : j.note;
+          return {...j, note, input:{...input, tilt:x.tilt}, result: x.r};
+        }catch(_){ return null; }
       },
       makeDoc: ()=>makeDoc({jsPDF,font}),
       render: (doc,{row,g,res,e,note,input,result})=>{

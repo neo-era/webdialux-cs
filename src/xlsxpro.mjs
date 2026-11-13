@@ -26,7 +26,7 @@ export function toRankedShape(results, rows = [], iesIndex = []) {
     const o = {
       iesName: r.iesName || r.chon, model: r.model || e.model || null, manufac: e.manufac || null,
       power: r.power ?? e.power ?? null, Ltb: r.Ltb, Uo: r.Uo, Ul: r.Ul, TI: r.TI, SR: r.SR, En: r.En,
-      pass: !!r.pass, d_Ltb: null, d_Uo: null, d_Ul: null, d_TI: null, d_SR: null, tong1: null, tong2: null,
+      pass: !!r.pass, tilt: r.tilt ?? null, tiltAuto: !!r.tiltAuto, tiltWarn: r.tiltWarn || null, d_Ltb: null, d_Uo: null, d_Ul: null, d_TI: null, d_SR: null, tong1: null, tong2: null,
       rank: r.pass ? 1 : null, chosen: !!r.pass,
     };
     return { ...base, options: [o], chosen: r.pass ? o : null };
@@ -166,9 +166,12 @@ export async function buildResultWorkbook(ExcelJS, { results, rows = [], q0 = 0.
         F(`IF(${P(n)},"",1+SUMPRODUCT((${rg("AC")}="ĐẠT")*((${rg("U")}<U${n})+${eqU}*(${rg("AI")}>AI${n})+${eqU}*${eqT1}*(${rg("AJ")}>AJ${n})+${eqU}*${eqT1}*(${rg("AJ")}=AJ${n})*(${rg("W")}>W${n})))${tieAbove(n)})`, o.rank),
         F(`IF(AK${n}=1,"✓","")`, o.chosen ? "✓" : ""),
       ] : [null, null, null, null, null, null, null, F(`IF(AC${n}="ĐẠT",1,"")`, o.rank), F(`IF(AC${n}="ĐẠT","✓","")`, o.chosen ? "✓" : "")];
-      const row = ws.addRow([...(k === 0 ? head : blank), o.manufac || "", o.lampModel || o.model || cleanIes(o.iesName), o.power ?? null, cleanIes(o.iesName) || o.model || "", // cột V = tên bộ đèn (sheet 3 & 2 tra theo cột này)
+      // góc nghiêng theo TỪNG phương án (cột L) — ô trống ở dữ liệu thì mỗi bộ đèn có góc tự chọn riêng
+      const lead = (k === 0 ? head : blank).slice(); if (o.tilt != null) lead[11] = r0(o.tilt);
+      const row = ws.addRow([...lead, o.manufac || "", o.lampModel || o.model || cleanIes(o.iesName), o.power ?? null, cleanIes(o.iesName) || o.model || "", // cột V = tên bộ đèn (sheet 3 & 2 tra theo cột này)
         raw(o.Ltb), raw(o.Uo), raw(o.Ul), raw(o.TI), raw(o.SR), raw(o.En), kq, ...score]);
       styleBody(row, zebra); mark(row.getCell(29), o.pass);
+      if (o.tiltAuto) { const c = row.getCell(12); c.font = { italic: true, size: 10, color: { argb: "FF1F6FB2" } }; c.note = `App tự chọn (thử 0/5/10/15/20°)${o.tiltWarn ? " — ⚠ " + o.tiltWarn : ""}`; }
       if (o.chosen) { row.eachCell({ includeEmpty: true }, (c) => { c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: C.chosen } }; }); row.getCell(20).font = { bold: true, size: 10 }; row.getCell(38).font = { bold: true, size: 11, color: { argb: C.okTxt } }; row.getCell(38).alignment = { horizontal: "center" }; mark(row.getCell(29), true); }
       if (k === 0) row.eachCell({ includeEmpty: true }, (c) => { c.border = { ...c.border, top: { style: "medium", color: { argb: C.head } } }; });
       [14, 15, 16, 18, 23, 24, 25, 27].forEach((ci) => { row.getCell(ci).numFmt = "0.00"; });
@@ -211,10 +214,10 @@ export async function buildResultWorkbook(ExcelJS, { results, rows = [], q0 = 0.
 
   // ===== Sheet 3: Theo tuyến =====
   const ws3 = wb.addWorksheet("Theo tuyến", { views: [{ state: "frozen", ySplit: 4 }] });
-  const H3 = ["STT", "Tuyến đường", "Cấp đường", "Loại tuyến", "Khoảng cột (m)", "Bề rộng (m)", "Độ cao (m)", "Bố trí", "Bộ đèn chọn", "Nhà sản xuất", "Công suất (W)", "Số bộ đèn", "Ltb", "Uo", "Ul", "TI (%)", "SR", "En (lx)", "Kết quả"];
+  const H3 = ["STT", "Tuyến đường", "Cấp đường", "Loại tuyến", "Khoảng cột (m)", "Bề rộng (m)", "Độ cao (m)", "Bố trí", "Bộ đèn chọn", "Nhà sản xuất", "Công suất (W)", "Số bộ đèn", "Ltb", "Uo", "Ul", "TI (%)", "SR", "En (lx)", "Kết quả", "Góc nghiêng (°)"];
   title(ws3, "BẢNG KẾT QUẢ THEO TUYẾN — bộ đèn tối ưu & chỉ tiêu QCVN 07-7:2023", sub, H3.length);
   ws3.getRow(3).height = 6; styleHeader(ws3.addRow(H3));
-  [6, 30, 9, 18, 10, 9, 9, 16, 32, 18, 10, 10, 8, 7, 7, 8, 7, 9, 14].forEach((w, i) => { ws3.getColumn(i + 1).width = w; });
+  [6, 30, 9, 18, 10, 9, 9, 16, 32, 18, 10, 10, 8, 7, 7, 8, 7, 9, 14, 10].forEach((w, i) => { ws3.getColumn(i + 1).width = w; });
   results.forEach((r, i) => {
     const g = r.input || {}, m = r.meta || {}, o = r.chosen, { n } = estimateLampCount(rows[i], g);
     const gr = groupOf[i];
@@ -225,7 +228,7 @@ export async function buildResultWorkbook(ExcelJS, { results, rows = [], q0 = 0.
     const row = ws3.addRow([r.stt ?? "", r.tuyen ?? "", r.roadClass ?? "", m.loaituyen || "", r1(g.spacing), r1(g.width), r1(g.H), arrLbl(g.arrangement),
       pick("V", o ? (cleanIes(o.iesName) || o.model || "") : ""), pick("S", o ? (o.manufac || "") : ""), pick("U", o ? o.power : null), n,
       pick("W", o ? raw(o.Ltb) : null), pick("X", o ? raw(o.Uo) : null), pick("Y", o ? raw(o.Ul) : null), pick("Z", o ? raw(o.TI) : null), pick("AA", o ? raw(o.SR) : null), pick("AB", o ? raw(o.En) : null),
-      kq]);
+      kq, pick("L", o ? (o.tilt ?? g.tilt ?? null) : null)]);
     styleBody(row, i % 2 === 1); mark(row.getCell(19), !!o && r.status === "ok");
     [13, 14, 15, 17].forEach((c) => { row.getCell(c).numFmt = "0.00"; }); row.getCell(18).numFmt = "0.0"; row.getCell(16).numFmt = "0";
     [1, 3, 11, 12, 16].forEach((c) => { row.getCell(c).alignment = { horizontal: "center", vertical: "middle" }; });
